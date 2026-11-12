@@ -1,8 +1,13 @@
 # Jarvis
 
-Küçük ajanlardan oluşan kişisel asistan. İlk ajan: **Canvas bildirimleri**.
+Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telefonuna ve bilgisayarına yazar.
 
-Her 10 dakikada bir Canvas'a bakar; yeni duyuru, ödev, teslim tarihi değişikliği, not ve mesajları Telegram'dan telefonuna ve bilgisayarına gönderir.
+| Ajan | Ne zaman | Ne yapar |
+| --- | --- | --- |
+| **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not ve mesajları haber verir |
+| **Sabah özeti** | Her sabah 08:00 | Bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç) ve son 24 saatin duyurularını tek mesajda toplar |
+
+Özeti beklemeden görmek için: **Actions** sekmesi > **Sabah özeti** > **Run workflow**.
 
 ## Kurulum (yaklaşık 15 dakika)
 
@@ -64,10 +69,12 @@ Testler: `python -m unittest discover tests`
 
 ```
 jarvis/
-  agents/canvas_notifier.py   Kaynak: Canvas'ı okur, yeni olayları bulur
+  agents/canvas_notifier.py   Canvas'ı okur, yeni olayları bulur
+  agents/morning_summary.py   Sabah özetini hazırlar
   channels/telegram.py        Kanal: mesaj gönderir (bütün ajanlar ortak kullanır)
   state.py                    Hafıza: görülen olayları tutar
-.github/workflows/canvas.yml  Zamanlayıcı
+.github/workflows/canvas.yml  10 dakikalık zamanlayıcı
+.github/workflows/morning.yml 08:00 zamanlayıcısı
 ```
 
 Yeni bir ajan eklemek için `agents/` altına bir dosya, `.github/workflows/` altına bir zamanlayıcı eklemek yeterli. Başka bir kanal (ör. WhatsApp) eklemek için `channels/` altına `send(text)` fonksiyonu olan bir dosya yazılır.
