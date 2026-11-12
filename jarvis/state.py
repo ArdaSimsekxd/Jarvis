@@ -9,7 +9,7 @@ MAX_KEYS = 2000
 class State:
     def __init__(self, name):
         self.path = os.path.join(STATE_DIR, f"{name}.json")
-        self.data = {"seen": [], "assignments": {}}
+        self.data = {"seen": [], "assignments": {}, "materials": {}}
         if os.path.exists(self.path):
             with open(self.path, encoding="utf-8") as f:
                 self.data.update(json.load(f))

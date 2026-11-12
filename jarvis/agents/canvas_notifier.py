@@ -7,6 +7,7 @@ import html
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -22,13 +23,21 @@ except Exception:  # tz verisi yoksa Türkiye saati
 # Ödev ve not bilgisini zaten ayrı takip ediyoruz; bu Canvas bildirimleri tekrar olur.
 SKIP_MESSAGE_CATEGORIES = {"Due Date", "Course Content", "Grading", "Late Grading", "Submission Comment"}
 
+# Teslime şu kadar saat kala hatırlat (küçükten büyüğe).
+REMINDER_HOURS = [(3, "🚨"), (24, "⏰")]
+
+# Bildirilecek modül öğeleri. Ödev, quiz ve tartışmalar zaten ayrı bildiriliyor.
+MATERIAL_ITEM_TYPES = {"File", "Page", "ExternalUrl", "ExternalTool"}
+MATERIAL_FILE_MAX_AGE = timedelta(days=2)
+MATERIAL_LIST_LIMIT = 15
+
 
 class Canvas:
     def __init__(self, base_url, token):
         self.base = base_url.rstrip("/")
         self.token = token
 
-    def get(self, path, params=None):
+    def get(self, path, params=None, max_pages=None):
         """GET isteği; sayfalı sonuçları (Link: next) birleştirir."""
         url = f"{self.base}/api/v1/{path}"
         if params:
@@ -42,9 +51,22 @@ class Canvas:
             if not isinstance(data, list):
                 return data
             results.extend(data)
+            if max_pages is not None:
+                max_pages -= 1
+                if max_pages <= 0:
+                    break
             m = re.search(r'<([^>]+)>;\s*rel="next"', link)
             url = m.group(1) if m else None
         return results
+
+    def try_get(self, path, params=None, max_pages=None):
+        """get gibi, ama o bölüm öğrenciye kapalıysa (401/403/404) boş liste döner."""
+        try:
+            return self.get(path, params, max_pages)
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403, 404):
+                return []
+            raise
 
 
 def strip_html(text, limit=200):
@@ -66,6 +88,26 @@ def esc(text):
 
 def link(url):
     return f'\n<a href="{esc(url)}">Canvas\'ta aç</a>' if url else ""
+
+
+def parse_time(iso):
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def is_submitted(assignment):
+    sub = assignment.get("submission") or {}
+    return (bool(sub.get("submitted_at")) or sub.get("workflow_state") in ("submitted", "graded")
+            or bool(sub.get("excused")))
+
+
+def fmt_left(delta):
+    minutes = max(int(delta.total_seconds() // 60), 0)
+    hours, mins = divmod(minutes, 60)
+    if hours >= 6 or mins == 0 and hours:
+        return f"{hours} saat"
+    if hours:
+        return f"{hours} saat {mins} dk"
+    return f"{mins} dk"
 
 
 def activity_messages(items, courses, state):
@@ -129,7 +171,96 @@ def assignment_messages(course_assignments, courses, state):
     return out
 
 
-def run(canvas, send, state):
+def reminder_messages(course_assignments, courses, state, now):
+    """Teslimi yaklaşan, henüz teslim edilmemiş ödevler için (anahtarlar, mesaj) döndürür."""
+    out = []
+    for course_id, assignments in course_assignments.items():
+        tag = f"[{esc(courses.get(course_id, ''))}] "
+        for a in assignments:
+            due_iso = a.get("due_at")
+            if not due_iso or a.get("published") is False or is_submitted(a):
+                continue
+            left = parse_time(due_iso) - now
+            if left <= timedelta(0):
+                continue
+            hit = next(((h, icon) for h, icon in REMINDER_HOURS if left <= timedelta(hours=h)), None)
+            if not hit:
+                continue
+            hours, icon = hit
+            key = f"rem:{a['id']}:{hours}:{due_iso}"
+            if state.seen(key):
+                continue
+            # Daha uzun süreli hatırlatmalar da artık gereksiz, onları da işaretle.
+            keys = [f"rem:{a['id']}:{h}:{due_iso}" for h, _ in REMINDER_HOURS if h >= hours]
+            text = (f"{icon} {tag}<b>Teslime {fmt_left(left)} kaldı:</b> {esc(a.get('name'))}\n"
+                    f"Teslim: {fmt_date(due_iso)}{link(a.get('html_url'))}")
+            out.append((keys, text))
+    return out
+
+
+def course_materials(canvas, course_id, now):
+    """Bir dersin modül öğelerini ve son yüklenen dosyalarını {anahtar: (başlık, link)} olarak döndürür."""
+    found = {}
+    modules = canvas.try_get(f"courses/{course_id}/modules", {"per_page": 50, "include[]": "items"})
+    for m in modules:
+        items = m.get("items")
+        if items is None:  # çok öğeli modüllerde Canvas öğeleri ayrı ister
+            items = canvas.try_get(f"courses/{course_id}/modules/{m['id']}/items", {"per_page": 100})
+        for it in items:
+            if it.get("type") not in MATERIAL_ITEM_TYPES or it.get("published") is False:
+                continue
+            key = f"file:{it['content_id']}" if it["type"] == "File" and it.get("content_id") else f"item:{it['id']}"
+            found[key] = (it.get("title"), it.get("html_url"))
+
+    files = canvas.try_get(f"courses/{course_id}/files",
+                           {"per_page": 100, "sort": "created_at", "order": "desc"}, max_pages=1)
+    base = getattr(canvas, "base", "")
+    for f in files:
+        if f.get("hidden") or f.get("locked_for_user"):
+            continue
+        key = f"file:{f['id']}"
+        # Eski bir dosya listede yeniden belirirse (ör. başka dosya silinince) bildirme.
+        fresh = f.get("created_at") and now - parse_time(f["created_at"]) <= MATERIAL_FILE_MAX_AGE
+        if key not in found and fresh:
+            found[key] = (f.get("display_name") or f.get("filename"), f"{base}/courses/{course_id}/files/{f['id']}")
+        elif key not in found:
+            found[key] = None  # bilinen ama bildirilmeyecek dosya
+    return found
+
+
+def material_messages(canvas, courses, state, now):
+    """Her ders için (ders id, tüm anahtarlar, mesaj ya da None) döndürür. İlk görülen ders sessizce kaydedilir."""
+    known_all = state.data["materials"]
+    out = []
+    for course_id, course in courses.items():
+        found = course_materials(canvas, course_id, now)
+        cid = str(course_id)
+        if cid not in known_all:
+            out.append((cid, list(found), None))
+            continue
+        known = set(known_all[cid])
+        new = [(k, v) for k, v in found.items() if k not in known]
+        if not new:
+            continue
+        shown = [v for _, v in new if v]
+        text = None
+        if shown:
+            def item(title, url):
+                return f'<a href="{esc(url)}">{esc(title)}</a>' if url else esc(title)
+            tag = f"[{esc(course)}] "
+            if len(shown) == 1:
+                text = f"📎 {tag}<b>Yeni materyal:</b> {item(*shown[0])}"
+            else:
+                lines = [f"• {item(*v)}" for v in shown[:MATERIAL_LIST_LIMIT]]
+                if len(shown) > MATERIAL_LIST_LIMIT:
+                    lines.append(f"… ve {len(shown) - MATERIAL_LIST_LIMIT} tane daha")
+                text = f"📎 {tag}<b>{len(shown)} yeni materyal:</b>\n" + "\n".join(lines)
+        out.append((cid, [k for k, _ in new], text))
+    return out
+
+
+def run(canvas, send, state, now=None):
+    now = now or datetime.now(timezone.utc)
     courses = {
         c["id"]: c.get("course_code") or c.get("name")
         for c in canvas.get("courses", {"enrollment_state": "active", "per_page": 100})
@@ -137,22 +268,29 @@ def run(canvas, send, state):
     }
     items = canvas.get("users/self/activity_stream", {"per_page": 50})
     course_assignments = {
-        cid: canvas.get(f"courses/{cid}/assignments", {"per_page": 100})
+        cid: canvas.get(f"courses/{cid}/assignments", {"per_page": 100, "include[]": "submission"})
         for cid in courses
     }
 
     first_run = state.is_new
     new_activity = activity_messages(items, courses, state)
     new_assignments = assignment_messages(course_assignments, courses, state)
+    reminders = reminder_messages(course_assignments, courses, state, now)
+    materials = material_messages(canvas, courses, state, now)
+
+    def remember_materials(cid, keys):
+        state.data["materials"].setdefault(cid, []).extend(keys)
 
     if first_run:
         # İlk çalışmada eski olayları sessizce kaydet, telefonu 200 bildirimle doldurma.
         send(f"🤖 Jarvis Canvas ajanı çalışıyor. {len(courses)} ders takipte; "
-             f"bundan sonraki yeni duyuru, ödev, not ve mesajları buraya yazacağım.")
+             f"bundan sonraki yeni duyuru, ödev, not, materyal ve mesajları buraya yazacağım.")
         for key, _ in new_activity:
             state.mark(key)
         for aid, due, _ in new_assignments:
             state.data["assignments"][aid] = due
+        for cid, keys, _ in materials:
+            remember_materials(cid, keys)
         state.save()
         return 0
 
@@ -165,6 +303,16 @@ def run(canvas, send, state):
         for key, text in reversed(new_activity):  # eskiden yeniye
             send(text)
             state.mark(key)
+            sent += 1
+        for cid, keys, text in materials:
+            if text:
+                send(text)
+                sent += 1
+            remember_materials(cid, keys)
+        for keys, text in reminders:
+            send(text)
+            for key in keys:
+                state.mark(key)
             sent += 1
     finally:
         state.save()
