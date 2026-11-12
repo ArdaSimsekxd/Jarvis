@@ -1,41 +1,46 @@
 """Sabah özeti ajanı.
 
-Her sabah tek mesaj: bugün ve önümüzdeki 7 günde teslim edilecekler, son 24 saatin duyuruları.
+Her sabah tek mesaj: gecikmiş ödevler, bugün ve önümüzdeki 7 günde teslim edilecekler,
+son 24 saatin duyuruları.
 Çalıştırma: python -m jarvis.agents.morning_summary
 """
 import os
 from datetime import datetime, timedelta, timezone
 
-from jarvis.agents.canvas_notifier import LOCAL_TZ, Canvas, esc
+from jarvis.agents.canvas_notifier import LOCAL_TZ, Canvas, esc, is_submitted
+from jarvis.agents.canvas_notifier import parse_time as parse
 from jarvis.channels import telegram
 
 DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
 WEEK_DAYS = 7
+OVERDUE_DAYS = 14  # daha eski gecikmeler özeti kalabalıklaştırmasın
 
 
-def parse(iso):
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
-
-
-def is_submitted(assignment):
-    sub = assignment.get("submission") or {}
-    return bool(sub.get("submitted_at")) or sub.get("workflow_state") in ("submitted", "graded") or bool(sub.get("excused"))
+def is_missing(assignment):
+    """Teslim tarihi geçmiş ödev gerçekten eksik mi? Canvas'ın kendi 'missing' işaretine güvenir."""
+    missing = (assignment.get("submission") or {}).get("missing")
+    if missing is None:  # işaret yoksa: sadece internetten teslim edilen ödevleri say
+        types = assignment.get("submission_types") or []
+        missing = any(t.startswith("online") or t == "external_tool" for t in types)
+    return bool(missing)
 
 
 def build(courses, course_assignments, stream, now):
     """Özet mesajını üretir. now: saat dilimi bilgili datetime."""
     today = now.astimezone(LOCAL_TZ).date()
-    due_today, due_week = [], []
+    due_today, due_week, overdue = [], [], []
     for cid, assignments in course_assignments.items():
         for a in assignments:
             if not a.get("due_at") or a.get("published") is False or is_submitted(a):
                 continue
             due = parse(a["due_at"])
-            if due < now:
-                continue
             local = due.astimezone(LOCAL_TZ)
-            days_left = (local.date() - today).days
             item = (due, local, courses.get(cid, ""), a.get("name"), a.get("html_url"))
+            if due < now:
+                if now - due <= timedelta(days=OVERDUE_DAYS) and is_missing(a):
+                    overdue.append(item)
+                continue
+            days_left = (local.date() - today).days
             if days_left == 0:
                 due_today.append(item)
             elif days_left <= WEEK_DAYS:
@@ -55,6 +60,10 @@ def build(courses, course_assignments, stream, now):
 
     local_now = now.astimezone(LOCAL_TZ)
     parts = [f"☀️ <b>Günaydın!</b> {DAYS[local_now.weekday()]}, {local_now:%d.%m.%Y}"]
+
+    if overdue:
+        parts.append("⚠️ <b>Gecikenler</b> (teslim edilmemiş)\n"
+                     + "\n".join(line(i, True) for i in sorted(overdue, key=lambda i: i[0])))
 
     if due_today:
         parts.append("🔴 <b>Bugün teslim</b>\n" + "\n".join(line(i, False) for i in sorted(due_today, key=lambda i: i[0])))

@@ -47,11 +47,29 @@ class MorningSummaryTest(unittest.TestCase):
         for hidden in ("Teslim edildi", "Geçmiş", "Uzak", "Tarihsiz", "Taslak", "Eski duyuru", "Mesaj"):
             self.assertNotIn(hidden, text)
 
+    def test_overdue_section(self):
+        assignments = {1: [
+            a("Eksik ödev", "2026-11-11T20:59:00Z", submission={"missing": True}),
+            a("İşaretsiz online", "2026-11-12T20:59:00Z", submission_types=["online_upload"]),
+            a("Kağıt sınav", "2026-11-12T10:00:00Z", submission_types=["on_paper"]),
+            a("Eksik değil", "2026-11-12T10:00:00Z", submission={"missing": False}, submission_types=["online_upload"]),
+            a("Çok eski", "2026-10-01T20:59:00Z", submission={"missing": True}),
+            a("Geç teslim edildi", "2026-11-11T20:59:00Z", submission={"missing": False, "submitted_at": "2026-11-12T01:00:00Z"}),
+        ]}
+        text = ms.build(COURSES, assignments, [], NOW)
+        self.assertIn("⚠️ <b>Gecikenler</b> (teslim edilmemiş)\n• <b>Çarşamba 11.11 23:59</b> MATH101:", text)
+        self.assertIn("Eksik ödev", text)
+        self.assertIn("İşaretsiz online", text)
+        self.assertLess(text.index("Gecikenler"), text.index("Bugün teslim"))
+        for hidden in ("Kağıt sınav", "Eksik değil", "Çok eski", "Geç teslim edildi"):
+            self.assertNotIn(hidden, text)
+
     def test_empty_day(self):
         text = ms.build(COURSES, {1: [], 2: []}, [], NOW)
         self.assertIn("Bugün teslim edilecek ödev yok", text)
         self.assertIn("Önümüzdeki 7 günde başka teslim görünmüyor", text)
         self.assertNotIn("duyuru", text)
+        self.assertNotIn("Gecikenler", text)
 
     def test_run_sends_one_message(self):
         class Fake:

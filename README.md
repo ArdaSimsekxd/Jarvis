@@ -4,8 +4,8 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 
 | Ajan | Ne zaman | Ne yapar |
 | --- | --- | --- |
-| **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not ve mesajları haber verir |
-| **Sabah özeti** | Her sabah 08:00 | Bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç) ve son 24 saatin duyurularını tek mesajda toplar |
+| **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not, mesaj ve ders materyalini (dosya, sayfa, bağlantı) haber verir. Teslim etmediğin ödevler için teslime 24 saat ve 3 saat kala hatırlatır |
+| **Sabah özeti** | Her sabah 08:00 | Gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç) ve son 24 saatin duyurularını tek mesajda toplar |
 
 Özeti beklemeden görmek için: **Actions** sekmesi > **Sabah özeti** > **Run workflow**.
 
