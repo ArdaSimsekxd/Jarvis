@@ -1,0 +1,16 @@
+# Jarvis'in anında cevap veren kısmı (Cloudflare Workers, ücretsiz plan).
+# Kurulumu .github/workflows/deploy-worker.yml kendiliğinden yapar.
+name = "jarvis"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "KV"
+id = "__KV_ID__"   # kurulum sırasında doldurulur
+
+[triggers]
+crons = ["*/2 * * * *"]   # hatırlatmalar 2 dakikada bir kontrol edilir
+
+[vars]
+MENU_URL = "https://raw.githubusercontent.com/ArdaSimsekxd/Jarvis/main/data/menu.json"
