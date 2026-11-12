@@ -1,0 +1,46 @@
+name: Canvas bildirimleri
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10 dakikada bir (GitHub bazen birkaç dakika geciktirir)
+  workflow_dispatch:          # Actions sekmesinden elle çalıştırmak için
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canvas-notifier
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Hafıza dosyası çalışmalar arasında cache ile taşınır (repoya yazılmaz).
+      - name: Hafızayı geri yükle
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: canvas-state-${{ github.run_id }}
+          restore-keys: canvas-state-
+
+      - name: Canvas'ı kontrol et
+        env:
+          CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}
+          CANVAS_TOKEN: ${{ secrets.CANVAS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m jarvis.agents.canvas_notifier
+
+      - name: Hafızayı kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: canvas-state-${{ github.run_id }}
