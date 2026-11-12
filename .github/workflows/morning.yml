@@ -1,0 +1,26 @@
+name: Sabah özeti
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 05:00 UTC = 08:00 Türkiye saati (GitHub birkaç dakika geciktirebilir)
+  workflow_dispatch:       # Actions sekmesinden elle çalıştırmak için
+
+permissions:
+  contents: read
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Özeti gönder
+        env:
+          CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}
+          CANVAS_TOKEN: ${{ secrets.CANVAS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m jarvis.agents.morning_summary
