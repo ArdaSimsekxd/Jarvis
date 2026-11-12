@@ -21,6 +21,7 @@ DEFAULT_HOST = "posta.agu.edu.tr"
 MAX_PER_RUN = 15                 # bir turda en fazla bu kadar mail tek tek bildirilir
 MAX_FETCH_BYTES = 15 * 1024 * 1024
 PREVIEW_CHARS = 200
+MENU_IMAGE_MIN_BYTES = 50 * 1024   # yemek listesi büyük bir tablo resmi; imza logoları bundan küçük
 
 
 def decode(value):
@@ -60,6 +61,37 @@ def notification(msg):
     if files:
         lines.append("📎 " + esc(", ".join(files[:5])) + (f" (+{len(files) - 5})" if len(files) > 5 else ""))
     return "\n".join(lines)
+
+
+def menu_image(msg):
+    """Mail yemek listesi olabilir mi? Öyleyse en büyük resmini (bayt, uzantı) döndürür, değilse None.
+
+    Ölçüt bilerek gevşek: konuda "yemek" geçsin ve mailde büyük bir resim olsun.
+    Resmin gerçekten liste olup olmadığına OCR adımı karar verir.
+    """
+    if "yemek" not in decode(msg.get("Subject")).replace("İ", "i").lower():
+        return None
+    best = None
+    for part in msg.walk():
+        if part.get_content_maintype() != "image":
+            continue
+        data = part.get_payload(decode=True) or b""
+        if len(data) >= MENU_IMAGE_MIN_BYTES and (best is None or len(data) > len(best[0])):
+            best = (data, part.get_content_subtype().replace("jpeg", "jpg"))
+    return best
+
+
+def save_menu_image(msg, out_dir):
+    """Mail yemek listesi adayıysa resmini out_dir içine kaydeder ve yolunu döndürür."""
+    found = menu_image(msg)
+    if not found or not out_dir:
+        return None
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"menu.{found[1]}")
+    with open(path, "wb") as f:
+        f.write(found[0])
+    print("Yemek listesi adayı bir resim kaydedildi.")
+    return path
 
 
 class Mailbox:
@@ -103,19 +135,15 @@ class Mailbox:
         raw = next((part[1] for part in data or [] if isinstance(part, tuple)), None)
         return email.message_from_bytes(raw, policy=email.policy.default) if raw else None
 
-    def probe(self, keyword, limit=3):
-        """Konusunda keyword geçen son maillerin ek türlerini döndürür (içerik değil, sadece tür ve boyut)."""
+    def latest_with(self, keyword, predicate, limit=10):
+        """Konusunda keyword geçen son maillerden predicate'i sağlayan en yenisini döndürür."""
         typ, data = self.conn.uid("SEARCH", None, "SUBJECT", f'"{keyword}"')
         uids = [int(u) for u in (data[0] or b"").split()] if typ == "OK" else []
-        out = []
-        for uid in sorted(uids)[-limit:]:
+        for uid in sorted(uids, reverse=True)[:limit]:
             msg = self.fetch(uid)
-            if msg is None:
-                continue
-            parts = [f"{p.get_content_type()} {len(p.get_payload(decode=True) or b'') // 1024}KB"
-                     for p in msg.walk() if not p.is_multipart() and p.get_content_maintype() != "text"]
-            out.append(parts)
-        return len(uids), out
+            if msg is not None and predicate(msg):
+                return msg
+        return None
 
     def close(self):
         try:
@@ -134,12 +162,6 @@ def run(mailbox, send, state, on_message=None):
         data["mail_last_uid"] = mailbox.max_uid()
         send("📧 Okul mailin bağlandı. Bundan sonra gelen yeni mailleri buraya yazacağım.")
         state.save()
-        if hasattr(mailbox, "probe"):
-            try:  # menü mailleri hangi biçimde geliyor? (okuyucuyu ona göre yazmak için)
-                count, found = mailbox.probe("yemek")
-                print(f"Konusunda 'yemek' geçen {count} mail var; son eklerin türleri: {found}")
-            except Exception as e:
-                print(f"Menü maili taraması yapılamadı: {type(e).__name__}")
         return 0
 
     uids = mailbox.uids_after(data["mail_last_uid"])
@@ -171,8 +193,14 @@ def main():
         print("ZIMBRA_EMAIL / ZIMBRA_PASSWORD girilmemiş, mail ajanı atlandı.")
         return
     mailbox = Mailbox(os.environ.get("ZIMBRA_IMAP_HOST") or DEFAULT_HOST, user, password)
+    menu_dir = os.environ.get("MENU_IMAGE_DIR")
     try:
-        sent = run(mailbox, telegram.send, State("mail"))
+        sent = run(mailbox, telegram.send, State("mail"), on_message=lambda m: save_menu_image(m, menu_dir))
+        if os.environ.get("MENU_REIMPORT") == "true":
+            # Elle tetikleme: gelen kutusundaki en son yemek listesini yeniden oku.
+            msg = mailbox.latest_with("yemek", lambda m: menu_image(m) is not None)
+            if msg is None or not save_menu_image(msg, menu_dir):
+                print("Gelen kutusunda resimli bir yemek listesi maili bulunamadı.")
     finally:
         mailbox.close()
     print(f"{sent} mail bildirildi")
