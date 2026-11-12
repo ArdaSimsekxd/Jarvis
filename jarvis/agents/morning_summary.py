@@ -1,7 +1,7 @@
 """Sabah özeti ajanı.
 
 Her sabah tek mesaj: gecikmiş ödevler, bugün ve önümüzdeki 7 günde teslim edilecekler,
-son 24 saatin duyuruları.
+son 24 saatin duyuruları ve günün yemek menüsü.
 Çalıştırma: python -m jarvis.agents.morning_summary
 """
 import os
@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from jarvis.agents.canvas_notifier import LOCAL_TZ, Canvas, esc, is_submitted
 from jarvis.agents.canvas_notifier import parse_time as parse
+from jarvis import menu as menu_mod
 from jarvis.channels import telegram
 
 DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
@@ -25,7 +26,7 @@ def is_missing(assignment):
     return bool(missing)
 
 
-def build(courses, course_assignments, stream, now):
+def build(courses, course_assignments, stream, now, menu=None):
     """Özet mesajını üretir. now: saat dilimi bilgili datetime."""
     today = now.astimezone(LOCAL_TZ).date()
     due_today, due_week, overdue = [], [], []
@@ -81,6 +82,9 @@ def build(courses, course_assignments, stream, now):
             + (f'<a href="{esc(it["html_url"])}">{esc(it.get("title"))}</a>' if it.get("html_url") else esc(it.get("title")))
             for it in announcements
         ))
+    menu_lines = menu_mod.lines_for(menu, today) if menu else []
+    if menu_lines:
+        parts.append("🍽 <b>Bugünün menüsü</b>\n" + "\n".join(menu_lines))
     return "\n\n".join(parts)
 
 
@@ -96,7 +100,7 @@ def run(canvas, send, now=None):
         for cid in courses
     }
     stream = canvas.get("users/self/activity_stream", {"per_page": 50})
-    send(build(courses, course_assignments, stream, now))
+    send(build(courses, course_assignments, stream, now, menu_mod.load()))
 
 
 def main():

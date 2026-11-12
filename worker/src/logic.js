@@ -135,22 +135,33 @@ export function parseReminder(args, nowMs) {
   return { error: "format" };
 }
 
-// Menü verisi: { "days": { "2026-11-13": ["Çorba", ...] ya da { "Öğle": [...], "Akşam": [...] } } }
-export function menuForDay(menu, dayMs) {
+// Menü verisi: { "days": { "2026-11-13": <gün> } }. Bir gün üç biçimde olabilir:
+//   ["Çorba", "Pilav"]                                  -> düz liste
+//   { "Çorba": "Yayla", "Ana yemek": "Tas kebabı", "Kalori": 942 }  -> etiketli tek öğün
+//   { "Öğle": ["..."], "Akşam": ["..."] }               -> birden çok öğün
+export function formatMenu(menu, dayMs) {
   const entry = menu?.days?.[dateKey(dayMs)];
   if (!entry) return null;
-  if (Array.isArray(entry)) return entry.length ? [["", entry]] : null;
-  const meals = Object.entries(entry).filter(([, items]) => Array.isArray(items) && items.length);
-  return meals.length ? meals : null;
-}
-
-export function formatMenu(menu, dayMs) {
-  const meals = menuForDay(menu, dayMs);
-  const title = `🍽 <b>${esc(fmtDate(dayMs))}</b>`;
-  if (!meals) return null;
-  const blocks = meals.map(([name, items]) =>
-    (name ? `<b>${esc(name)}</b>\n` : "") + items.map((i) => `• ${esc(i)}`).join("\n"));
-  return `${title}\n\n${blocks.join("\n\n")}`;
+  const blocks = [];
+  if (Array.isArray(entry)) {
+    if (entry.length) blocks.push(entry.map((i) => `• ${esc(i)}`).join("\n"));
+  } else {
+    const labeled = [];
+    for (const [name, value] of Object.entries(entry)) {
+      if (Array.isArray(value) && value.length) {
+        blocks.push(`<b>${esc(name)}</b>\n` + value.map((i) => `• ${esc(i)}`).join("\n"));
+      } else if (typeof value === "string" && value) {
+        labeled.push(`• <b>${esc(name)}:</b> ${esc(value)}`);
+      }
+    }
+    if (labeled.length) blocks.unshift(labeled.join("\n"));
+    const kcal = [];
+    if (Number.isFinite(entry["Kalori"])) kcal.push(`${entry["Kalori"]} kcal`);
+    if (Number.isFinite(entry["Vejetaryen kalori"])) kcal.push(`vejetaryen menü ${entry["Vejetaryen kalori"]} kcal`);
+    if (blocks.length && kcal.length) blocks.push(`<i>${kcal.join(" · ")}</i>`);
+  }
+  if (!blocks.length) return null;
+  return `🍽 <b>${esc(fmtDate(dayMs))}</b>\n\n${blocks.join("\n\n")}`;
 }
 
 export const HELP = [

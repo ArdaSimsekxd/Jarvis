@@ -64,6 +64,19 @@ class MorningSummaryTest(unittest.TestCase):
         for hidden in ("Kağıt sınav", "Eksik değil", "Çok eski", "Geç teslim edildi"):
             self.assertNotIn(hidden, text)
 
+    def test_menu_section(self):
+        menu = {"days": {"2026-11-13": {"Çorba": "Yayla Çorba", "Ana yemek": "Tas <Kebabı>", "Kalori": 942}}}
+        text = ms.build(COURSES, {1: [], 2: []}, [], NOW, menu)
+        self.assertTrue(text.endswith("🍽 <b>Bugünün menüsü</b>\n• <b>Çorba:</b> Yayla Çorba\n• <b>Ana yemek:</b> Tas &lt;Kebabı&gt;"))
+        self.assertNotIn("menü", ms.build(COURSES, {1: [], 2: []}, [], NOW, {"days": {}}))
+
+    def test_real_menu_file_loads(self):
+        from datetime import date
+        from jarvis import menu as menu_mod
+        menu = menu_mod.load()
+        self.assertEqual(len(menu_mod.lines_for(menu, date(2026, 11, 13))), 5)
+        self.assertEqual(menu_mod.lines_for(menu, date(2026, 11, 14)), [])   # cumartesi
+
     def test_empty_day(self):
         text = ms.build(COURSES, {1: [], 2: []}, [], NOW)
         self.assertIn("Bugün teslim edilecek ödev yok", text)

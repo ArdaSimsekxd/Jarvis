@@ -103,6 +103,20 @@ class Mailbox:
         raw = next((part[1] for part in data or [] if isinstance(part, tuple)), None)
         return email.message_from_bytes(raw, policy=email.policy.default) if raw else None
 
+    def probe(self, keyword, limit=3):
+        """Konusunda keyword geçen son maillerin ek türlerini döndürür (içerik değil, sadece tür ve boyut)."""
+        typ, data = self.conn.uid("SEARCH", None, "SUBJECT", f'"{keyword}"')
+        uids = [int(u) for u in (data[0] or b"").split()] if typ == "OK" else []
+        out = []
+        for uid in sorted(uids)[-limit:]:
+            msg = self.fetch(uid)
+            if msg is None:
+                continue
+            parts = [f"{p.get_content_type()} {len(p.get_payload(decode=True) or b'') // 1024}KB"
+                     for p in msg.walk() if not p.is_multipart() and p.get_content_maintype() != "text"]
+            out.append(parts)
+        return len(uids), out
+
     def close(self):
         try:
             self.conn.logout()
@@ -120,6 +134,12 @@ def run(mailbox, send, state, on_message=None):
         data["mail_last_uid"] = mailbox.max_uid()
         send("📧 Okul mailin bağlandı. Bundan sonra gelen yeni mailleri buraya yazacağım.")
         state.save()
+        if hasattr(mailbox, "probe"):
+            try:  # menü mailleri hangi biçimde geliyor? (okuyucuyu ona göre yazmak için)
+                count, found = mailbox.probe("yemek")
+                print(f"Konusunda 'yemek' geçen {count} mail var; son eklerin türleri: {found}")
+            except Exception as e:
+                print(f"Menü maili taraması yapılamadı: {type(e).__name__}")
         return 0
 
     uids = mailbox.uids_after(data["mail_last_uid"])

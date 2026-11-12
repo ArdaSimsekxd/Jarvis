@@ -1,1 +1,194 @@
-{"days": {}}
+{
+ "source": "Sevim Yemek Hizmetleri, Kasım 2026 yemek listesi (elle girildi)",
+ "days": {
+  "2026-11-02": {
+   "Çorba": "Süzme Mercimek Çorba",
+   "Ana yemek": "Kıymalı Ispanak + Yoğurt",
+   "Vejetaryen": "Fırın Türlü",
+   "Yardımcı": "Soslu Makarna",
+   "Tamamlayıcı": "Tiramisu",
+   "Kalori": 1030,
+   "Vejetaryen kalori": 1025
+  },
+  "2026-11-03": {
+   "Çorba": "Tavuk Suyu Çorba",
+   "Ana yemek": "Etli Nohut",
+   "Vejetaryen": "Karışık Kızartma",
+   "Yardımcı": "Pirinç Pilavı",
+   "Tamamlayıcı": "Salata Bar",
+   "Kalori": 961,
+   "Vejetaryen kalori": 919
+  },
+  "2026-11-04": {
+   "Çorba": "Yayla Çorba",
+   "Ana yemek": "Püreli Köfte",
+   "Vejetaryen": "Patates Borani",
+   "Yardımcı": "Sebzeli Bulgur Pilavı",
+   "Tamamlayıcı": "Meyve",
+   "Kalori": 802,
+   "Vejetaryen kalori": 685
+  },
+  "2026-11-05": {
+   "Çorba": "Ezogelin Çorba",
+   "Ana yemek": "Tavuk Döner + Turşu",
+   "Vejetaryen": "Sebze Mix",
+   "Yardımcı": "Pirinç Pilavı",
+   "Tamamlayıcı": "Karışık İçecek",
+   "Kalori": 774,
+   "Vejetaryen kalori": 674
+  },
+  "2026-11-06": {
+   "Çorba": "Kremalı Domates Çorba",
+   "Ana yemek": "Orman Kebabı",
+   "Vejetaryen": "Beşamel Soslu Ispanak",
+   "Yardımcı": "Peynirli Börek",
+   "Tamamlayıcı": "Şekerpare",
+   "Kalori": 1133,
+   "Vejetaryen kalori": 1056
+  },
+  "2026-11-09": {
+   "Çorba": "Yoğurt Çorba",
+   "Ana yemek": "Kıyma Sote",
+   "Vejetaryen": "Fırın Soslu Brokoli",
+   "Yardımcı": "Mısırlı Pirinç Pilavı",
+   "Tamamlayıcı": "Haydari",
+   "Kalori": 1090,
+   "Vejetaryen kalori": 650
+  },
+  "2026-11-10": {
+   "Çorba": "Ezogelin Çorba",
+   "Ana yemek": "Etli Kuru Fasulye",
+   "Vejetaryen": "Şakşuka",
+   "Yardımcı": "Pirinç Pilavı",
+   "Tamamlayıcı": "Ekler Pasta",
+   "Kalori": 921,
+   "Vejetaryen kalori": 1014
+  },
+  "2026-11-11": {
+   "Çorba": "Köylü Çorba",
+   "Ana yemek": "Fırın Tavuk Pirzola",
+   "Vejetaryen": "Pırasa Yemeği",
+   "Yardımcı": "Erişteli Bulgur Pilavı",
+   "Tamamlayıcı": "Salata Bar",
+   "Kalori": 745,
+   "Vejetaryen kalori": 677
+  },
+  "2026-11-12": {
+   "Çorba": "Domates Çorba",
+   "Ana yemek": "Hamburger Köfte + Fırın Patates",
+   "Vejetaryen": "Kabak Sandal",
+   "Yardımcı": "Napoliten Makarna",
+   "Tamamlayıcı": "Karışık İçecek",
+   "Kalori": 1057,
+   "Vejetaryen kalori": 617
+  },
+  "2026-11-13": {
+   "Çorba": "Yayla Çorba",
+   "Ana yemek": "Tas Kebabı",
+   "Vejetaryen": "Fırın Karnabahar",
+   "Yardımcı": "Kalem Börek",
+   "Tamamlayıcı": "Meyve",
+   "Kalori": 942,
+   "Vejetaryen kalori": 810
+  },
+  "2026-11-16": {
+   "Çorba": "Zer. Mercimek Çorba",
+   "Ana yemek": "Etli Mantı + Yoğurt",
+   "Vejetaryen": "Sebze Mix",
+   "Yardımcı": "Zeytinyağlı Barbunya Pilaki",
+   "Tamamlayıcı": "Rulo Pasta",
+   "Kalori": 1413,
+   "Vejetaryen kalori": 1168
+  },
+  "2026-11-17": {
+   "Çorba": "Köylü Çorba",
+   "Ana yemek": "Hasanpaşa Köfte",
+   "Vejetaryen": "Bezelye Yemeği",
+   "Yardımcı": "Spagetti",
+   "Tamamlayıcı": "Meyve",
+   "Kalori": 842,
+   "Vejetaryen kalori": 735
+  },
+  "2026-11-18": {
+   "Çorba": "Yoğurt Çorba",
+   "Ana yemek": "Etli Nohut",
+   "Vejetaryen": "Şakşuka",
+   "Yardımcı": "Şehriyeli Pirinç Pilavı",
+   "Tamamlayıcı": "Profiterol",
+   "Kalori": 1065,
+   "Vejetaryen kalori": 1023
+  },
+  "2026-11-19": {
+   "Çorba": "Ezogelin Çorba",
+   "Ana yemek": "Piliç Topkapı",
+   "Vejetaryen": "Ispanak Yemeği",
+   "Yardımcı": "Peynirli/Patatesli Börek",
+   "Tamamlayıcı": "Karışık İçecek",
+   "Kalori": 992,
+   "Vejetaryen kalori": 814
+  },
+  "2026-11-20": {
+   "Çorba": "Tarhana Çorba",
+   "Ana yemek": "Bahçıvan Kebabı",
+   "Vejetaryen": "Karnabahar Kızartma",
+   "Yardımcı": "Bulgur Pilavı",
+   "Tamamlayıcı": "Salata Bar",
+   "Kalori": 835,
+   "Vejetaryen kalori": 780
+  },
+  "2026-11-23": {
+   "Çorba": "Arapaşı Çorba",
+   "Ana yemek": "Şehriyeli Güveç",
+   "Vejetaryen": "Beşamel Soslu Brokoli",
+   "Yardımcı": "Kalem Börek",
+   "Tamamlayıcı": "Pembe Sultan",
+   "Kalori": 1209,
+   "Vejetaryen kalori": 987
+  },
+  "2026-11-24": {
+   "Çorba": "Ezogelin Çorba",
+   "Ana yemek": "Patates Oturtma",
+   "Vejetaryen": "Kabak Kalye",
+   "Yardımcı": "Penne Makarna",
+   "Tamamlayıcı": "Triliçe",
+   "Kalori": 1035,
+   "Vejetaryen kalori": 745
+  },
+  "2026-11-25": {
+   "Çorba": "Şehriye Çorba",
+   "Ana yemek": "Ekşili Köfte",
+   "Vejetaryen": "Mercimek Köfte",
+   "Yardımcı": "Nohutlu Pirinç Pilavı",
+   "Tamamlayıcı": "Salata Bar",
+   "Kalori": 912,
+   "Vejetaryen kalori": 795
+  },
+  "2026-11-26": {
+   "Çorba": "Mercimek Çorba",
+   "Ana yemek": "Tavuk Tantuni + Söğüş",
+   "Vejetaryen": "Yeşil Mercimek",
+   "Yardımcı": "Şehriyeli Pirinç Pilavı",
+   "Tamamlayıcı": "Meyve",
+   "Kalori": 703,
+   "Vejetaryen kalori": 543
+  },
+  "2026-11-27": {
+   "Çorba": "Kesme Çorba",
+   "Ana yemek": "Cordon Bleu + Garnitür",
+   "Vejetaryen": "Şakşuka",
+   "Yardımcı": "Meyhane Pilavı",
+   "Tamamlayıcı": "Karışık İçecek",
+   "Kalori": 1004,
+   "Vejetaryen kalori": 885
+  },
+  "2026-11-30": {
+   "Çorba": "Süzme Mercimek Çorba",
+   "Ana yemek": "Çiftlik Kebabı",
+   "Vejetaryen": "Fırın Sebze Sote",
+   "Yardımcı": "Pirinç Pilavı",
+   "Tamamlayıcı": "Kalburabastı",
+   "Kalori": 1063,
+   "Vejetaryen kalori": 888
+  }
+ }
+}

@@ -48,6 +48,18 @@ test("menü metni", () => {
   assert.equal(formatMenu(menu, NOW), "🍽 <b>Cuma, 13.11.2026</b>\n\n• Mercimek &lt;çorbası&gt;\n• Tavuk sote");
   assert.match(formatMenu(menu, parseDay("yarın", NOW)), /<b>Öğle<\/b>\n• Pilav\n\n<b>Akşam<\/b>\n• Makarna/);
   assert.equal(formatMenu(menu, parseDay("pazar", NOW)), null);
+  const labeled = { days: { "2026-11-13": { "Çorba": "Yayla Çorba", "Ana yemek": "Tas Kebabı", "Kalori": 942, "Vejetaryen kalori": 810 } } };
+  assert.equal(formatMenu(labeled, NOW),
+    "🍽 <b>Cuma, 13.11.2026</b>\n\n• <b>Çorba:</b> Yayla Çorba\n• <b>Ana yemek:</b> Tas Kebabı\n\n<i>942 kcal · vejetaryen menü 810 kcal</i>");
+});
+
+test("gerçek menü dosyası okunabiliyor", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const menu = JSON.parse(await readFile(new URL("../../data/menu.json", import.meta.url), "utf8"));
+  for (const key of Object.keys(menu.days)) {
+    const [y, m, d] = key.split("-").map(Number);
+    assert.match(formatMenu(menu, trToMs(y, m, d, 12)), /Ana yemek/, key);
+  }
 });
 
 // Sahte KV: liste anahtar sırasıyla döner, metadata taşır.
