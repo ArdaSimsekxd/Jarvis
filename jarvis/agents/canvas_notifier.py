@@ -1,15 +1,18 @@
 """Canvas bildirim ajanı.
 
-Canvas'tan yeni duyuru, mesaj, tartışma, not ve ödevleri bulur, Telegram'a gönderir.
+Canvas'tan yeni duyuru, mesaj, tartışma, not, ödev ve ders materyallerini bulur, Telegram'a gönderir.
+Yeni yüklenen dosyaların kendisi de gönderilir.
 Çalıştırma: python -m jarvis.agents.canvas_notifier
 """
 import html
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from jarvis.channels import telegram
 from jarvis.richtext import to_telegram
@@ -31,6 +34,22 @@ REMINDER_HOURS = [(3, "🚨"), (24, "⏰")]
 MATERIAL_ITEM_TYPES = {"File", "Page", "ExternalUrl", "ExternalTool"}
 MATERIAL_FILE_MAX_AGE = timedelta(days=2)
 MATERIAL_LIST_LIMIT = 15
+
+# Yeni dosyaların kendisi de gönderilir. Bir kontrolde en fazla şu kadar dosya ve süre;
+# artanlar bir sonraki kontrolde (10 dakika sonra) gelir.
+MAX_FILES_PER_RUN = 10
+FILE_TIME_BUDGET = 150   # saniye
+MAX_FILE_BYTES = telegram.MAX_FILE_BYTES
+
+
+class _KeepTokenHome(urllib.request.HTTPRedirectHandler):
+    """Canvas dosyayı başka bir sunucuya yönlendirirse erişim anahtarı oraya gönderilmez."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urlsplit(newurl)[:2] != urlsplit(req.full_url)[:2]:
+            new.headers.pop("Authorization", None)
+        return new
 
 
 class Canvas:
@@ -68,6 +87,19 @@ class Canvas:
             if e.code in (401, 403, 404):
                 return []
             raise
+
+    def download(self, url, limit):
+        """Dosyayı indirir. limit bayttan büyükse ya da adres web adresi değilse None döner."""
+        target = urlsplit(url)
+        if target.scheme not in ("http", "https"):
+            return None
+        headers = {}
+        if target[:2] == urlsplit(self.base)[:2]:   # erişim anahtarı yalnızca Canvas'ın kendisine gider
+            headers["Authorization"] = f"Bearer {self.token}"
+        opener = urllib.request.build_opener(_KeepTokenHome)
+        with opener.open(urllib.request.Request(url, headers=headers), timeout=60) as resp:
+            data = resp.read(limit + 1)
+        return data if len(data) <= limit else None
 
 
 def strip_html(text, limit=200):
@@ -261,38 +293,62 @@ def course_materials(canvas, course_id, now):
     return found
 
 
-def material_messages(canvas, courses, state, now):
-    """Her ders için (ders id, tüm anahtarlar, mesaj ya da None) döndürür. İlk görülen ders sessizce kaydedilir."""
+def material_updates(canvas, courses, state, now):
+    """Her ders için (ders id, ders adı, yeni anahtarlar, gösterilecekler) döndürür.
+
+    Gösterilecekler [(anahtar, başlık, link)] listesidir. İlk görülen ders sessizce kaydedilir.
+    """
     known_all = state.data["materials"]
     out = []
     for course_id, course in courses.items():
         found = course_materials(canvas, course_id, now)
         cid = str(course_id)
         if cid not in known_all:
-            out.append((cid, list(found), None))
+            out.append((cid, course, list(found), []))
             continue
         known = set(known_all[cid])
         new = [(k, v) for k, v in found.items() if k not in known]
-        if not new:
-            continue
-        shown = [v for _, v in new if v]
-        text = None
-        if shown:
-            def item(title, url):
-                return f'<a href="{esc(url)}">{esc(title)}</a>' if url else esc(title)
-            tag = f"[{esc(course)}] "
-            if len(shown) == 1:
-                text = f"📎 {tag}<b>Yeni materyal:</b> {item(*shown[0])}"
-            else:
-                lines = [f"• {item(*v)}" for v in shown[:MATERIAL_LIST_LIMIT]]
-                if len(shown) > MATERIAL_LIST_LIMIT:
-                    lines.append(f"… ve {len(shown) - MATERIAL_LIST_LIMIT} tane daha")
-                text = f"📎 {tag}<b>{len(shown)} yeni materyal:</b>\n" + "\n".join(lines)
-        out.append((cid, [k for k, _ in new], text))
+        if new:
+            out.append((cid, course, [k for k, _ in new], [(k, *v) for k, v in new if v]))
     return out
 
 
-def run(canvas, send, state, now=None):
+def material_text(course, shown):
+    """Dosyası gönderilmeyen materyaller için tek mesaj; shown: [(başlık, link)]."""
+    if not shown:
+        return None
+
+    def item(title, url):
+        return f'<a href="{esc(url)}">{esc(title)}</a>' if url else esc(title)
+    tag = f"[{esc(course)}] "
+    if len(shown) == 1:
+        return f"📎 {tag}<b>Yeni materyal:</b> {item(*shown[0])}"
+    lines = [f"• {item(*v)}" for v in shown[:MATERIAL_LIST_LIMIT]]
+    if len(shown) > MATERIAL_LIST_LIMIT:
+        lines.append(f"… ve {len(shown) - MATERIAL_LIST_LIMIT} tane daha")
+    return f"📎 {tag}<b>{len(shown)} yeni materyal:</b>\n" + "\n".join(lines)
+
+
+def send_material_file(canvas, course_id, file_id, caption, send_file):
+    """Dosyayı Canvas'tan indirip Telegram'a yükler. Olmazsa False döner; o zaman bağlantısı gönderilir."""
+    try:
+        info = canvas.get(f"courses/{course_id}/files/{file_id}")
+        if not isinstance(info, dict) or info.get("locked_for_user") or not info.get("url"):
+            return False
+        if (info.get("size") or 0) > MAX_FILE_BYTES:
+            return False
+        data = canvas.download(info["url"], MAX_FILE_BYTES)
+        if not data:
+            return False
+        send_file(info.get("display_name") or info.get("filename") or "dosya", data, caption)
+        return True
+    except Exception as e:  # dosya adı ve adresi herkese açık kayda yazılmaz
+        print(f"Bir dosya gönderilemedi ({type(e).__name__}); bağlantısı gönderilecek")
+        return False
+
+
+def run(canvas, send, state, now=None, send_file=None):
+    """send_file(dosya adı, içerik, açıklama) verilirse yeni dosyaların kendisi de gönderilir."""
     now = now or datetime.now(timezone.utc)
     courses = {
         c["id"]: c.get("course_code") or c.get("name")
@@ -309,7 +365,7 @@ def run(canvas, send, state, now=None):
     new_activity = activity_messages(items, courses, state)
     new_assignments = assignment_messages(course_assignments, courses, state)
     reminders = reminder_messages(course_assignments, courses, state, now)
-    materials = material_messages(canvas, courses, state, now)
+    materials = material_updates(canvas, courses, state, now)
 
     def remember_materials(cid, keys):
         state.data["materials"].setdefault(cid, []).extend(keys)
@@ -322,12 +378,13 @@ def run(canvas, send, state, now=None):
             state.mark(key)
         for aid, due, _ in new_assignments:
             state.data["assignments"][aid] = due
-        for cid, keys, _ in materials:
+        for cid, _, keys, _ in materials:
             remember_materials(cid, keys)
         state.save()
         return 0
 
     sent = 0
+    files_left, files_until = MAX_FILES_PER_RUN, time.monotonic() + FILE_TIME_BUDGET
     try:  # bir gönderim hata verse bile gönderilenler hafızaya yazılır
         for aid, due, text in new_assignments:
             send(text)
@@ -337,11 +394,28 @@ def run(canvas, send, state, now=None):
             send(text)
             state.mark(key)
             sent += 1
-        for cid, keys, text in materials:
+        for cid, course, keys, shown in materials:
+            links, handled = [], set()   # handled: dosyası gönderilenler ve sonraki kontrole kalanlar
+            for key, title, url in shown:
+                if send_file and key.startswith("file:"):
+                    if files_left <= 0 or time.monotonic() > files_until:
+                        handled.add(key)   # hafızaya yazılmaz: sıradaki kontrolde gönderilir
+                        continue
+                    files_left -= 1
+                    name = str(title or "")
+                    name = name if len(name) <= 200 else name[:200] + "…"
+                    caption = f"📎 [{esc(course)}] <b>Yeni dosya:</b> {esc(name)}{link(url)}"
+                    if send_material_file(canvas, cid, key[5:], caption, send_file):
+                        remember_materials(cid, [key])
+                        handled.add(key)
+                        sent += 1
+                        continue
+                links.append((title, url))
+            text = material_text(course, links)
             if text:
                 send(text)
                 sent += 1
-            remember_materials(cid, keys)
+            remember_materials(cid, [k for k in keys if k not in handled])
         for keys, text in reminders:
             send(text)
             for key in keys:
@@ -357,7 +431,7 @@ def main():
         print("Sessiz saatler: Canvas kontrolü sabaha bırakıldı")
         return
     canvas = Canvas(os.environ["CANVAS_BASE_URL"], os.environ["CANVAS_TOKEN"])
-    sent = run(canvas, telegram.send, State("canvas"))
+    sent = run(canvas, telegram.send, State("canvas"), send_file=telegram.send_document)
     print(f"{sent} bildirim gönderildi")
 
 
