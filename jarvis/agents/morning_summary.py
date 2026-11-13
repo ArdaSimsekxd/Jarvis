@@ -95,17 +95,19 @@ def build(courses, course_assignments, stream, now, menu=None, schedule=None):
 
 def run(canvas, send, now=None):
     now = now or datetime.now(timezone.utc)
+    raw_courses = canvas.get("courses", {"enrollment_state": "active", "per_page": 100})
     courses = {
         c["id"]: c.get("course_code") or c.get("name")
-        for c in canvas.get("courses", {"enrollment_state": "active", "per_page": 100})
+        for c in raw_courses
         if isinstance(c, dict) and "id" in c and not c.get("access_restricted_by_date")
     }
+    schedule = schedule_mod.with_names(schedule_mod.load(), raw_courses)
     course_assignments = {
         cid: canvas.get(f"courses/{cid}/assignments", {"per_page": 100, "include[]": "submission"})
         for cid in courses
     }
     stream = canvas.get("users/self/activity_stream", {"per_page": 50})
-    send(build(courses, course_assignments, stream, now, menu_mod.load(), schedule_mod.load()))
+    send(build(courses, course_assignments, stream, now, menu_mod.load(), schedule))
 
 
 def main():

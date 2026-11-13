@@ -45,11 +45,57 @@ def load():
     return parse(os.environ.get("DERS_PROGRAMI", ""))
 
 
+# Ders adının başında dersin kendisini anlatmayan kelimeler (dönem, şube) atlanır.
+NOISE = {"guz", "bahar", "yaz", "fall", "spring", "summer", "section", "sec", "sube", "donemi", "donem"}
+
+
+def _norm(text):
+    return re.sub(r"[^0-9a-z]", "", _plain(text or ""))
+
+
+def first_word(code, courses):
+    """Ders kodunun Canvas'taki adının ilk kelimesini döndürür ('EE452' -> 'Digital'). Bulunamazsa ''."""
+    key = _norm(code)
+    if not key:
+        return ""
+    match = None
+    for c in courses or []:
+        if not isinstance(c, dict):
+            continue
+        if _norm(c.get("course_code")) == key:
+            match = c
+            break
+        if match is None and (key in _norm(c.get("course_code")) or key in _norm(c.get("name"))):
+            match = c
+    if not match:
+        return ""
+    # Adın içinde kodun kendisi de geçebilir ("EE452 - Digital ...", "EE 452 Digital ..."): onu çıkar.
+    m = re.fullmatch(r"([^\W\d_]+)(\d+)", code.strip())
+    pattern = rf"{re.escape(m.group(1))}[\s\-_.]*{m.group(2)}" if m else re.escape(code.strip())
+    name = re.sub(pattern, " ", match.get("name") or "", flags=re.IGNORECASE)
+    for word in re.split(r"[^\w]+", name):
+        if len(word) >= 2 and not any(ch.isdigit() for ch in word) and _plain(word) not in NOISE:
+            return word
+    return ""
+
+
+def with_names(schedule, courses):
+    """Programdaki her derse Canvas'taki adının ilk kelimesini ekler (gösterimde kodun önüne yazılır)."""
+    cache = {}
+    for lessons in (schedule or {}).values():
+        for x in lessons:
+            if x["code"] not in cache:
+                cache[x["code"]] = first_word(x["code"], courses)
+            x["name"] = cache[x["code"]]
+    return schedule
+
+
 def lines_for(schedule, day):
     """day: datetime.date. O günün ders satırlarını döndürür; ders yoksa boş liste."""
     out = []
     for x in (schedule or {}).get(day.weekday(), []):
-        line = f"• <b>{x['start']}–{x['end']}</b> {esc(x['code'])}"
+        label = f"{x['name']} {x['code']}" if x.get("name") else x["code"]
+        line = f"• <b>{x['start']}–{x['end']}</b> {esc(label)}"
         if x["room"]:
             line += f" · {esc(x['room'])}"
         if x["note"]:

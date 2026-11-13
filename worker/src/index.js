@@ -1,6 +1,6 @@
 // Jarvis botu: Telegram'dan gelen komutlara anında cevap verir, hatırlatmaları zamanında gönderir.
 import {
-  HELP, dateKey, dueJobs, esc, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
+  HELP, dateKey, dueJobs, esc, firstWord, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
   parseCommand, parseDay, parseReminder, parseSchedule,
 } from "./logic.js";
 
@@ -9,6 +9,8 @@ const MAX_REMINDERS = 100;
 const MAX_TEXT = 500;
 const WORKFLOWS = { canvas: "canvas.yml", morning: "morning.yml", evening: "evening.yml" };
 const DAILY_KEYS = { morning: "sched:morning", evening: "sched:evening" };   // günde bir kez çalışan işlerin en son başlatıldığı gün
+const NAMES_KEY = "cache:coursenames";  // ders kodu -> adının ilk kelimesi (Canvas'tan, günde bir yenilenir)
+const NAMES_TTL = 24 * 60 * 60;
 const MAX_COURSES = 40;                // ücretsiz planda bir istekte en fazla 50 alt istek yapılabilir
 const WARN_KEY = "sched:warn";         // anahtar uyarısının en son gönderildiği gün
 
@@ -118,11 +120,30 @@ async function cmdCanvas(ctx, format) {
   }
 }
 
-function cmdDersler(args, ctx) {
+// Programdaki ders kodlarının Canvas'taki adlarını bulur. Canvas'a ulaşılamazsa boş döner (sadece kod gösterilir).
+async function courseNames(ctx) {
+  try {
+    const cached = await ctx.kv.get(NAMES_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch { /* bozuk önbellek: yeniden oku */ }
+  if (!ctx.canvas) return {};
+  try {
+    const courses = await ctx.canvas("courses?enrollment_state=active&per_page=100");
+    const names = {};
+    for (const x of Object.values(ctx.schedule ?? {}).flat()) names[x.code] ??= firstWord(x.code, courses);
+    await ctx.kv.put(NAMES_KEY, JSON.stringify(names), { expirationTtl: NAMES_TTL });
+    return names;
+  } catch (err) {
+    console.error("ders adları okunamadı", err?.message);
+    return {};
+  }
+}
+
+async function cmdDersler(args, ctx) {
   const day = parseDay(args, ctx.now);
   if (day === null) return "Günü anlayamadım. Örnekler: <code>/dersler</code>, <code>/dersler yarın</code>, <code>/dersler salı</code>";
   if (!Object.keys(ctx.schedule ?? {}).length) return "Ders programı henüz girilmemiş.";
-  return formatSchedule(ctx.schedule, day) ?? `📚 <b>${esc(fmtDate(day))}</b>\n\nBu gün ders yok.`;
+  return formatSchedule(ctx.schedule, day, await courseNames(ctx)) ?? `📚 <b>${esc(fmtDate(day))}</b>\n\nBu gün ders yok.`;
 }
 
 async function cmdHatirlat(args, ctx) {
@@ -165,7 +186,7 @@ export async function handleMessage(message, ctx) {
   else if (cmd.command === "yemek") reply = await cmdYemek(cmd.args, ctx);
   else if (["odevler", "odev"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatPending);
   else if (["notlar", "not"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatGrades);
-  else if (["dersler", "ders", "program"].includes(cmd.command)) reply = cmdDersler(cmd.args, ctx);
+  else if (["dersler", "ders", "program"].includes(cmd.command)) reply = await cmdDersler(cmd.args, ctx);
   else if (cmd.command === "hatirlat") reply = await cmdHatirlat(cmd.args, ctx);
   else if (cmd.command === "hatirlatmalar") reply = await cmdListe(ctx);
   else if (cmd.command === "sil") reply = await cmdSil(cmd.args, ctx);
