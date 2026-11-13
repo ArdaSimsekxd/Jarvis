@@ -97,6 +97,43 @@ class MailNotifierTest(unittest.TestCase):
         self.assertIn("Sınav cuma günü.", forwarded)
         self.assertNotIn("kisiye ozel", forwarded)
 
+    def test_canvas_copies_are_skipped(self):
+        footer = ("\n\n________________________________________\nBildirim ayarlarını değiştirmek için:\n"
+                  "https://canvas.agu.edu.tr/profile/communication")
+        ann = make("HIGH VOLTAGE TECHNIQUES-S1 <notifications@agu.edu.tr>", "Midterm: HIGH VOLTAGE TECHNIQUES-S1",
+                   "Dear All, ...\n\nDuyuruyu görüntüle: https://canvas.agu.edu.tr/courses/12/announcements/345" + footer)
+        html_ann = make("Ders <notifications@agu.edu.tr>", "Duyuru", "düz",
+                        html='<p>Dear All</p><a href="https://canvas.agu.edu.tr/courses/12/discussion_topics/9">Aç</a>'
+                             '<a href="https://canvas.agu.edu.tr/profile/communication">Ayarlar</a>')
+        assignment = make("Ders <notifications@instructure.com>", "Ödev",
+                          "Yeni ödev: https://canvas.agu.edu.tr/courses/12/assignments/77")
+        auto = make("Ders <bildirim@agu.edu.tr>", "Duyuru", "https://canvas.agu.edu.tr/courses/12/announcements/345")
+        auto["Auto-Submitted"] = "auto-generated"
+        for m in (ann, html_ann, assignment, auto):
+            self.assertTrue(mn.canvas_duplicate(m, "canvas.agu.edu.tr"))
+
+        # Bunlar bildirilmeye devam eder: içerikleri yalnızca mailde var ya da Canvas'tan gelmiyorlar.
+        comment = make("Ders <notifications@agu.edu.tr>", "Teslim yorumu",
+                       "Hoca yorum yazdı: https://canvas.agu.edu.tr/courses/12/assignments/77/submissions/5" + footer)
+        message = make("Hoca <notifications@agu.edu.tr>", "Mesaj",
+                       "Merhaba: https://canvas.agu.edu.tr/conversations/88" + footer)
+        person = make("Arkadaş <biri@agu.edu.tr>", "Bak",
+                      "Şu duyuruyu gördün mü? https://canvas.agu.edu.tr/courses/12/announcements/345")
+        other_site = make("Başka <x@agu.edu.tr>", "Başka",
+                          "https://baska.test/courses/1/announcements/2\nhttps://baska.test/profile/communication")
+        for m in (comment, message, person, other_site, make("a@agu.edu.tr", "Düz", "selam")):
+            self.assertFalse(mn.canvas_duplicate(m, "canvas.agu.edu.tr"))
+
+        box = FakeMailbox({5: make("Eski <eski@agu.edu.tr>", "Eski mail")})
+        self.run_once(box)
+        box.mails.update({6: ann, 7: message, 8: assignment, 9: person})
+        sent = []
+        self.assertEqual(mn.run(box, sent.append, state_mod.State("mail"), canvas_host="canvas.agu.edu.tr"), 2)
+        self.assertEqual(len(sent), 2)
+        self.assertIn("Mesaj", sent[0])
+        self.assertIn("Bak", sent[1])
+        self.assertEqual(state_mod.State("mail").data["mail_last_uid"], 9)   # atlananlar yeniden gelmez
+
     def test_many_mails_are_capped(self):
         box = FakeMailbox({1: make("a@b.c", "ilk")})
         self.run_once(box)

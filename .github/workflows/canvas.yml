@@ -50,6 +50,7 @@ jobs:
           ZIMBRA_EMAIL: ${{ secrets.ZIMBRA_EMAIL }}
           ZIMBRA_PASSWORD: ${{ secrets.ZIMBRA_PASSWORD }}
           ZIMBRA_IMAP_HOST: ${{ vars.ZIMBRA_IMAP_HOST }}
+          CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}   # Canvas'ın attığı kopya mailleri tanımak için
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MENU_IMAGE_DIR: ${{ runner.temp }}/menu
