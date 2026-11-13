@@ -4,7 +4,7 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 
 | Ajan | Ne zaman | Ne yapar |
 | --- | --- | --- |
-| **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not, mesaj ve ders materyalini (dosya, sayfa, bağlantı) haber verir. Duyuruların tamamını gönderir (paragraflar, kalın yazı ve bağlantılarla). Teslim etmediğin ödevler için teslime 24 saat ve 3 saat kala hatırlatır |
+| **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not, mesaj ve ders materyalini (dosya, sayfa, bağlantı) haber verir. Duyuruların tamamını gönderir (paragraflar, kalın yazı ve bağlantılarla). Yeni yüklenen dosyaların (PDF, slayt vb.) kendisini de gönderir; 45 MB'tan büyük ya da indirilemeyen dosyaların yalnızca bağlantısı gelir. Teslim etmediğin ödevler için teslime 24 saat ve 3 saat kala hatırlatır |
 | **Okul maili** | 10 dakikada bir | Okul mailine (Zimbra) gelen yeni mailleri gönderen, konu ve kısa önizlemeyle haber verir. Mailleri okunmuş işaretlemez. Canvas'ın duyuru, tartışma ve ödevler için attığı kopya mailleri atlar, çünkü onları Canvas bildirimi zaten gönderir |
 | **Sabah özeti** | Her sabah 08:00 | Günün derslerini, gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
 | **Akşam önizlemesi** | Her akşam 21:00 | Bu gece ve yarın teslim edilecekleri, yarının derslerini ve yemek menüsünü tek mesajda toplar. Yarın için söylenecek bir şey yoksa mesaj atmaz |
@@ -144,7 +144,7 @@ jarvis/
   agents/morning_summary.py   Sabah özetini hazırlar
   agents/evening_preview.py   Akşam önizlemesini hazırlar
   schedule.py                 Ders programını okur (DERS_PROGRAMI secret'ından)
-  channels/telegram.py        Kanal: mesaj gönderir (bütün ajanlar ortak kullanır)
+  channels/telegram.py        Kanal: mesaj ve dosya gönderir (bütün ajanlar ortak kullanır)
   richtext.py                 Canvas'taki biçimli metni Telegram'ın anladığı biçime çevirir
   state.py                    Hafıza: görülen olayları tutar
   menu.py, menu_ocr.py        Yemek menüsünü okur; listeyi resimden çıkarır

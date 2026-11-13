@@ -108,5 +108,42 @@ class TelegramFallbackTest(unittest.TestCase):
             telegram.send("x")
 
 
+class TelegramDocumentTest(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+        env = mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1"})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def fake_urlopen(self, reject_html):
+        def urlopen(req, timeout=None):
+            self.calls.append((req.full_url, req.get_header("Content-type"), req.data))
+            if reject_html and b'name="parse_mode"' in req.data:
+                raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, io.BytesIO(b"{}"))
+            return mock.MagicMock(__enter__=lambda s: s, __exit__=lambda *a: False, read=lambda: b"{}")
+        return urlopen
+
+    def test_file_is_uploaded_with_its_name_and_caption(self):
+        with mock.patch("urllib.request.urlopen", self.fake_urlopen(False)):
+            telegram.send_document('Hafta "2"/ş.pdf', b"\x00%PDF\r\n\xff", "<b>Yeni dosya:</b> ş")
+        (url, ctype, body), = self.calls
+        self.assertTrue(url.endswith("/bott/sendDocument"))
+        boundary = ctype.split("boundary=")[1].encode()
+        parts = body.split(b"--" + boundary)
+        self.assertEqual(parts[-1], b"--\r\n")
+        self.assertIn(b'name="chat_id"\r\n\r\n1\r\n', parts[1])
+        self.assertIn('name="caption"\r\n\r\n<b>Yeni dosya:</b> ş\r\n'.encode(), parts[2])
+        self.assertIn(b'name="parse_mode"\r\n\r\nHTML\r\n', parts[3])
+        self.assertIn('filename="Hafta _2__ş.pdf"'.encode(), parts[4])     # tırnak ve eğik çizgi temizlenir
+        self.assertTrue(parts[4].endswith(b"\r\n\r\n\x00%PDF\r\n\xff\r\n"))
+
+    def test_rejected_caption_is_resent_as_plain_text(self):
+        with mock.patch("urllib.request.urlopen", self.fake_urlopen(True)):
+            telegram.send_document("a.pdf", b"x", "<b>a &amp; b</b> <i>bozuk")
+        self.assertEqual(len(self.calls), 2)
+        self.assertIn(b'name="caption"\r\n\r\na & b bozuk\r\n', self.calls[1][2])
+        self.assertNotIn(b"parse_mode", self.calls[1][2])
+
+
 if __name__ == "__main__":
     unittest.main()
