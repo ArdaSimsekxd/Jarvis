@@ -40,6 +40,8 @@ Pazartesi 10:00-11:45 EE452 F0C04
 Salı 11:00-12:45 EE4005 EECAPSLAB uygulama
 ```
 
+Dersin adını yazmana gerek yok: Jarvis kodu Canvas'taki derslerinle eşleştirir ve adın ilk kelimesini kodun önüne yazar (ör. `Digital EE452`). Canvas'ta bulamazsa sadece kodu gösterir.
+
 Programı değiştirdikten sonra botun yeni programı görmesi için **Actions** > **Botu kur** > **Run workflow** ile botu bir kez yeniden kur.
 
 ## Yemek menüsü

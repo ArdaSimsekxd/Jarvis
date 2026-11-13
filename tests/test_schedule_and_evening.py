@@ -34,6 +34,27 @@ class ScheduleTest(unittest.TestCase):
         self.assertEqual(schedule.parse(""), {})
         self.assertEqual(schedule.lines_for(None, date(2026, 11, 16)), [])
 
+    def test_course_names_from_canvas(self):
+        courses = [
+            {"id": 1, "course_code": "EE452", "name": "EE452 - Digital Signal Processing"},
+            {"id": 2, "course_code": "EE 4005 - 01", "name": "2026-2027 Güz EE 4005 Capstone Design I"},
+            {"id": 3, "course_code": "GLB300", "name": "Küresel Sorunlar (GLB300)"},
+            {"id": 4, "course_code": "2026F-OHS", "name": "OHS401 İş Sağlığı ve Güvenliği"},
+            {"id": 5, "course_code": "EE454", "name": "EE454"},
+            "bozuk kayıt",
+        ]
+        self.assertEqual(schedule.first_word("EE452", courses), "Digital")
+        self.assertEqual(schedule.first_word("EE4005", courses), "Capstone")   # dönem ve yıl atlanır
+        self.assertEqual(schedule.first_word("GLB300", courses), "Küresel")
+        self.assertEqual(schedule.first_word("OHS401", courses), "İş")         # kod sadece adda geçiyor
+        self.assertEqual(schedule.first_word("EE454", courses), "")            # adı koddan ibaret
+        self.assertEqual(schedule.first_word("MATH101", courses), "")          # Canvas'ta yok
+        self.assertEqual(schedule.first_word("EE45", [{"course_code": "EE452", "name": "Yanlış"}, {"course_code": "EE45", "name": "Doğru Ders"}]), "Doğru")
+
+        s = schedule.with_names(schedule.parse(PROGRAM), courses)
+        self.assertEqual(schedule.lines_for(s, date(2026, 11, 16)),
+                         ["• <b>09:00–09:45</b> MATH101", "• <b>10:00–11:45</b> Digital EE452 · F0C04"])
+
     def test_morning_summary_shows_todays_lessons(self):
         now = datetime(2026, 11, 16, 5, 0, tzinfo=timezone.utc)   # Pazartesi 08:00
         text = ms.build(COURSES, {1: []}, [], now, schedule=schedule.parse(PROGRAM))

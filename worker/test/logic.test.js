@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { handleMessage, runSchedule, sendDueReminders } from "../src/index.js";
 import {
-  dateKey, dueJobs, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule,
+  dateKey, dueJobs, firstWord, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule,
   parseCommand, parseDay, parseReminder, parseSchedule, trToMs,
 } from "../src/logic.js";
 
@@ -317,4 +317,40 @@ test("uçtan uca: /odevler, /notlar, /dersler", async () => {
   ctx.canvas = async () => { throw new Error("canvas 500"); };
   await handleMessage(msg("/odevler"), ctx);
   assert.match(ctx.sent.pop(), /Canvas'a şu an ulaşamadım/);
+});
+
+test("ders adının ilk kelimesi Canvas'tan bulunur", async () => {
+  const courses = [
+    { id: 1, course_code: "EE452", name: "EE452 - Digital Signal Processing" },
+    { id: 2, course_code: "EE 4005 - 01", name: "2026-2027 Güz EE 4005 Capstone Design I" },
+    { id: 3, course_code: "GLB300", name: "Küresel Sorunlar (GLB300)" },
+    { id: 4, course_code: "2026F-OHS", name: "OHS401 İş Sağlığı ve Güvenliği" },
+    { id: 5, course_code: "EE454", name: "EE454" },
+    null,
+  ];
+  assert.equal(firstWord("EE452", courses), "Digital");
+  assert.equal(firstWord("EE4005", courses), "Capstone");   // dönem ve yıl atlanır
+  assert.equal(firstWord("GLB300", courses), "Küresel");
+  assert.equal(firstWord("OHS401", courses), "İş");         // kod sadece adda geçiyor
+  assert.equal(firstWord("EE454", courses), "");            // adı koddan ibaret
+  assert.equal(firstWord("MATH101", courses), "");          // Canvas'ta yok
+  assert.equal(firstWord("EE45", [{ course_code: "EE452", name: "Yanlış" }, { course_code: "EE45", name: "Doğru Ders" }]), "Doğru");
+
+  // /dersler: ad kodun önüne yazılır, Canvas'a günde bir kez sorulur
+  const ctx = fakeCtx();
+  ctx.schedule = parseSchedule(PROGRAM);
+  let asked = 0;
+  ctx.canvas = async () => { asked += 1; return courses; };
+  await handleMessage(msg("/dersler"), ctx);
+  assert.match(ctx.sent.pop(), /• <b>09:00–11:45<\/b> Küresel GLB300 · A\/S22\n• <b>14:00–15:45<\/b> EE454 · F0C04 \(uygulama\)\n• <b>14:00–15:45<\/b> İş OHS401 · A\/S13/);
+  await handleMessage(msg("/dersler pazartesi"), ctx);
+  assert.match(ctx.sent.pop(), /Digital EE452 · F0C04/);
+  assert.equal(asked, 1);
+
+  // Canvas'a ulaşılamazsa sadece kod gösterilir
+  const offline = fakeCtx();
+  offline.schedule = parseSchedule(PROGRAM);
+  offline.canvas = async () => { throw new Error("canvas 500"); };
+  await handleMessage(msg("/dersler pazartesi"), offline);
+  assert.match(offline.sent.pop(), /<\/b> EE452 · F0C04/);
 });

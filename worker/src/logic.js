@@ -200,11 +200,38 @@ export function parseSchedule(text) {
   return out;
 }
 
-export function formatSchedule(schedule, dayMs) {
+// Ders adının başında dersin kendisini anlatmayan kelimeler (dönem, şube) atlanır.
+const NOISE = new Set(["guz", "bahar", "yaz", "fall", "spring", "summer", "section", "sec", "sube", "donemi", "donem"]);
+const norm = (text) => plain(text).replace(/[^0-9a-z]/g, "");
+
+// Ders kodunun Canvas'taki adının ilk kelimesi ("EE452" -> "Digital"). Bulunamazsa "".
+export function firstWord(code, courses) {
+  const key = norm(code);
+  if (!key) return "";
+  let match = null;
+  for (const c of courses ?? []) {
+    if (norm(c?.course_code) === key) { match = c; break; }
+    if (!match && (norm(c?.course_code).includes(key) || norm(c?.name).includes(key))) match = c;
+  }
+  if (!match) return "";
+  // Adın içinde kodun kendisi de geçebilir ("EE452 - Digital ...", "EE 452 Digital ..."): onu çıkar.
+  const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = /^(\p{L}+)(\d+)$/u.exec(String(code).trim());
+  const pattern = m ? `${escRe(m[1])}[\\s\\-_.]*${m[2]}` : escRe(String(code).trim());
+  const name = String(match.name ?? "").replace(new RegExp(pattern, "giu"), " ");
+  for (const word of name.split(/[^\p{L}\p{N}_]+/u)) {
+    if (word.length >= 2 && !/\d/.test(word) && !NOISE.has(plain(word))) return word;
+  }
+  return "";
+}
+
+// names: { <ders kodu>: <adının ilk kelimesi> }; verilirse kodun önüne yazılır.
+export function formatSchedule(schedule, dayMs, names = {}) {
   const lessons = schedule?.[trParts(dayMs).wd] ?? [];
   if (!lessons.length) return null;
+  const label = (x) => (names?.[x.code] ? `${names[x.code]} ${x.code}` : x.code);
   const lines = lessons.map((x) =>
-    `• <b>${x.start}–${x.end}</b> ${esc(x.code)}` + (x.room ? ` · ${esc(x.room)}` : "") + (x.note ? ` (${esc(x.note)})` : ""));
+    `• <b>${x.start}–${x.end}</b> ${esc(label(x))}` + (x.room ? ` · ${esc(x.room)}` : "") + (x.note ? ` (${esc(x.note)})` : ""));
   return `📚 <b>${esc(fmtDate(dayMs))}</b>\n\n${lines.join("\n")}`;
 }
 
