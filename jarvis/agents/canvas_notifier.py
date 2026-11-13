@@ -12,6 +12,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from jarvis.channels import telegram
+from jarvis.richtext import to_telegram
 from jarvis.state import State
 
 try:
@@ -122,7 +123,9 @@ def activity_messages(items, courses, state):
 
         if kind == "Announcement":
             key = f"ann:{it['id']}"
-            text = f"📢 {tag}<b>Yeni duyuru:</b> {title}\n{esc(strip_html(it.get('message')))}{link(url)}"
+            # Duyurunun tamamı gönderilir (paragraflar, kalın yazı ve bağlantılar korunur).
+            body = to_telegram(it.get("message"), url or "")
+            text = f"📢 {tag}<b>Yeni duyuru:</b> {title}" + (f"\n\n{body}\n" if body else "") + link(url)
         elif kind == "DiscussionTopic":
             key = f"disc:{it['id']}"
             text = f"💬 {tag}<b>Yeni tartışma:</b> {title}{link(url)}"
