@@ -5,7 +5,7 @@ const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
 
 export const WEEKDAYS = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
-const WEEKDAY_KEYS = ["pazar", "pazartesi", "sali", "carsamba", "persembe", "cuma", "cumartesi"];
+export const WEEKDAY_KEYS = ["pazar", "pazartesi", "sali", "carsamba", "persembe", "cuma", "cumartesi"];
 
 export function esc(text) {
   return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -341,6 +341,9 @@ export const HELP = [
   "/odevler — bekleyen ve geciken ödevler",
   "/notlar — son girilen notlar",
   "/dersler — bugünün dersleri (ya da: <code>/dersler yarın</code>, <code>/dersler salı</code>)",
+  "",
+  "/fitness salı 13:00-14:30 — her salı fitness randevusu al (tek gün için: <code>/fitness 27.11 13:00-14:30</code>)",
+  "/fitness — isteklerim ve alınan randevular (ayrıntı: <code>/fitness yardim</code>)",
   "",
   "/yemek — bugünün menüsü",
   "/yemek yarın — yarının menüsü (ya da: <code>cuma</code>, <code>17.11</code>)",

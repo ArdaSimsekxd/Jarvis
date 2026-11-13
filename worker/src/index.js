@@ -3,6 +3,7 @@ import {
   HELP, dateKey, dueJobs, esc, firstWord, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
   parseCommand, parseDay, parseReminder, parseSchedule,
 } from "./logic.js";
+import { cmdFitness, runFitness } from "./fitness.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
@@ -187,6 +188,7 @@ export async function handleMessage(message, ctx) {
   else if (["odevler", "odev"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatPending);
   else if (["notlar", "not"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatGrades);
   else if (["dersler", "ders", "program"].includes(cmd.command)) reply = await cmdDersler(cmd.args, ctx);
+  else if (["fitness", "spor"].includes(cmd.command)) reply = await cmdFitness(cmd.args, ctx);
   else if (cmd.command === "hatirlat") reply = await cmdHatirlat(cmd.args, ctx);
   else if (cmd.command === "hatirlatmalar") reply = await cmdListe(ctx);
   else if (cmd.command === "sil") reply = await cmdSil(cmd.args, ctx);
@@ -240,6 +242,14 @@ function context(env, now = Date.now()) {
     dispatch: env.GH_TOKEN && env.GITHUB_REPO ? (job) => dispatchWorkflow(env, job) : null,
     canvas: env.CANVAS_TOKEN && env.CANVAS_BASE_URL ? (path) => canvasGet(env, path) : null,
     schedule: parseSchedule(env.SCHEDULE),
+    // Okulun rezervasyon sitesi (resmi API). Kullanıcı adı ve şifre yalnızca Cloudflare'deki gizli alanda durur.
+    booked: env.BOOKED_URL && env.BOOKED_USERNAME && env.BOOKED_PASSWORD ? {
+      url: env.BOOKED_URL,
+      username: env.BOOKED_USERNAME,
+      password: env.BOOKED_PASSWORD,
+      resourceId: Number(env.FITNESS_RESOURCE_ID),
+      fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15000) }),
+    } : null,
     id: () => crypto.randomUUID().slice(0, 8),
   };
 }
@@ -263,6 +273,10 @@ export default {
 
   async scheduled(event, env, ctx) {
     const c = context(env, event?.scheduledTime ?? Date.now());
-    ctx.waitUntil(Promise.all([sendDueReminders(c), runSchedule(c)]));
+    ctx.waitUntil(Promise.all([
+      sendDueReminders(c),
+      runSchedule(c),
+      runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
+    ]));
   },
 };
