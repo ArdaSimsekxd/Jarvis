@@ -156,6 +156,12 @@ test("zamanlayıcı: hangi işin zamanı geldi", () => {
   assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 21, 0)), ["canvas", "evening"]);
   assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 23, 58)), ["evening"]);
   assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 0, 2)), []);
+  // sessiz saatler: 00:00–07:00 arasında kontrol başlatılmaz
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 23, 50)), ["canvas", "evening"]);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 0, 0)), []);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 3, 30)), []);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 6, 50)), []);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 7, 0)), ["canvas"]);
 });
 
 test("zamanlayıcı: işleri başlatır, sabah özeti günde bir kez", async () => {

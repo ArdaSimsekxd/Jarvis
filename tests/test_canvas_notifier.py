@@ -144,6 +144,45 @@ class CanvasNotifierTest(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertIn("Teslim tarihi değişti", sent[0])
 
+    def test_quiet_hours(self):
+        at = lambda d, h, m=0: datetime(2026, 11, d, h, m, tzinfo=timezone.utc)   # Türkiye saati = UTC+3
+        self.assertFalse(cn.is_quiet(at(13, 20, 59)))    # 23:59
+        self.assertTrue(cn.is_quiet(at(13, 21, 0)))      # 00:00
+        self.assertTrue(cn.is_quiet(at(14, 3, 59)))      # 06:59
+        self.assertFalse(cn.is_quiet(at(14, 4, 0)))      # 07:00
+
+        # Geceye denk gelen hatırlatma 23:30'a çekilir; gündüze denk gelen yerinde kalır.
+        due = at(14, 2, 0)                                                        # Cumartesi 05:00
+        self.assertEqual(cn.remind_at(due, 3), at(13, 20, 30))                    # 02:00 yerine Cuma 23:30
+        self.assertEqual(cn.remind_at(due, 24), at(12, 20, 30))                   # Cuma 05:00 yerine Perşembe 23:30
+        self.assertEqual(cn.remind_at(at(14, 12, 0), 3), at(14, 9, 0))            # 15:00 teslim -> 12:00
+
+        canvas = FakeCanvas()
+        canvas.assignments = [{"id": 7, "name": "Gece teslimi", "due_at": "2026-11-14T02:00:00Z"}]
+        self.run_at(canvas, at(12, 9))                                            # ilk çalışma: karşılama
+        self.assertEqual(self.run_at(canvas, at(12, 20, 20)), [])                 # Perşembe 23:20: henüz değil
+        sent = self.run_at(canvas, at(12, 20, 30))                                # Perşembe 23:30: 24 saat hatırlatması
+        self.assertEqual(len(sent), 1)
+        self.assertIn("⏰ [MATH101] <b>Teslime 29 saat kaldı:</b> Gece teslimi", sent[0])
+        self.assertEqual(self.run_at(canvas, at(13, 20, 20)), [])
+        sent = self.run_at(canvas, at(13, 20, 40))                                # Cuma 23:40: 3 saat hatırlatması erken gelir
+        self.assertEqual(len(sent), 1)
+        self.assertIn("🚨 [MATH101] <b>Teslime 5 saat 20 dk kaldı:</b> Gece teslimi", sent[0])
+
+    def test_scheduled_runs_are_skipped_in_quiet_hours(self):
+        import unittest.mock as mock
+        night = datetime(2026, 11, 14, 0, 3, tzinfo=timezone.utc)   # 03:03, GitHub'ın yedek zamanlayıcısı
+        day = datetime(2026, 11, 14, 9, 0, tzinfo=timezone.utc)
+        with mock.patch.object(cn, "datetime") as fake:
+            fake.now.return_value = night
+            with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "schedule"}):
+                self.assertTrue(cn.skip_for_quiet_hours())
+            with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch"}):
+                self.assertFalse(cn.skip_for_quiet_hours())   # elle (ya da botun) başlattığı çalışma atlanmaz
+            fake.now.return_value = day
+            with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "schedule"}):
+                self.assertFalse(cn.skip_for_quiet_hours())
+
     def test_new_materials(self):
         canvas = FakeCanvas()
         canvas.assignments = []

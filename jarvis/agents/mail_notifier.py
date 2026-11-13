@@ -13,7 +13,7 @@ import re
 from email.header import decode_header, make_header
 from email.utils import parseaddr
 
-from jarvis.agents.canvas_notifier import esc, strip_html
+from jarvis.agents.canvas_notifier import esc, skip_for_quiet_hours, strip_html
 from jarvis.channels import telegram
 from jarvis.state import State
 
@@ -220,6 +220,9 @@ def main():
     user, password = os.environ.get("ZIMBRA_EMAIL"), os.environ.get("ZIMBRA_PASSWORD")
     if not user or not password:
         print("ZIMBRA_EMAIL / ZIMBRA_PASSWORD girilmemiş, mail ajanı atlandı.")
+        return
+    if skip_for_quiet_hours():
+        print("Sessiz saatler: mail kontrolü sabaha bırakıldı")
         return
     mailbox = Mailbox(os.environ.get("ZIMBRA_IMAP_HOST") or DEFAULT_HOST, user, password)
     menu_dir = os.environ.get("MENU_IMAGE_DIR")
