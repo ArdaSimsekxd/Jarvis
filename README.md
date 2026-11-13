@@ -94,6 +94,7 @@ Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen
 
 ## Bilmen gerekenler
 
+- **Sessiz saatler:** 00:00 ile 07:00 arasında Canvas ve mail kontrolü yapılmaz, yani bildirim gelmez. Gece biriken her şey 07:00'deki ilk kontrolde gönderilir. Teslim hatırlatması geceye denk gelen ödevin hatırlatması öne çekilir ve 23:30'da gelir. Kendi kurduğun `/hatirlat` hatırlatmaları ve komut cevapları gece de çalışır. Saatleri değiştirmek için `jarvis/agents/canvas_notifier.py` ve `worker/src/logic.js` içindeki `QUIET_FROM` ve `QUIET_UNTIL` değerlerini değiştir.
 - GitHub'ın kendi zamanlayıcısı güvenilir değil: 10 dakikalık bir işi saatlerce geciktirebiliyor. Bu yüzden `DISPATCH_TOKEN` girildiğinde Canvas/mail kontrolünü (10 dakikada bir), sabah özetini (08:00) ve akşam önizlemesini (21:00) bot başlatır. GitHub'ın zamanlayıcısı yedek olarak durur; sabah özeti ikisi birden çalışsa da günde bir kez gider.
 - `DISPATCH_TOKEN` şuradan üretilir: GitHub > Settings > Developer settings > Fine-grained tokens. Yalnızca bu repo seçilir, izin olarak yalnızca **Actions: Read and write** verilir. Süresi dolarsa bot Telegram'dan haber verir.
 - Repoda 60 gün hiç değişiklik olmazsa GitHub zamanlanmış görevi durdurur ve sana e-posta atar; Actions sekmesinden tek tıkla yeniden açılır.

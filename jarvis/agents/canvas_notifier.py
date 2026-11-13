@@ -171,6 +171,35 @@ def assignment_messages(course_assignments, courses, state):
     return out
 
 
+# Sessiz saatler (Türkiye saati): bu aralıkta bildirim gönderilmez, birikenler sabah ilk kontrolde gelir.
+# Aynı değerler botta da var: worker/src/logic.js (QUIET_FROM, QUIET_UNTIL).
+QUIET_FROM, QUIET_UNTIL = 0, 7
+QUIET_LEAD = timedelta(minutes=30)   # geceye denk gelen hatırlatma, sessiz saatlerden bu kadar önce gönderilir
+
+
+def is_quiet(now=None):
+    hour = (now or datetime.now(timezone.utc)).astimezone(LOCAL_TZ).hour
+    return QUIET_FROM <= hour < QUIET_UNTIL
+
+
+def skip_for_quiet_hours():
+    """GitHub'ın yedek zamanlayıcısı gece çalışırsa kontrol atlanır. Bot gece zaten başlatmaz; elle çalıştırma her zaman çalışır."""
+    return os.environ.get("GITHUB_EVENT_NAME") == "schedule" and is_quiet()
+
+
+def remind_at(due, hours):
+    """Teslimden `hours` saat önceki hatırlatmanın gönderileceği an.
+
+    Sessiz saatlere denk geliyorsa öne çekilir: gece 05:00'te teslim edilecek ödevin
+    "3 saat kaldı" hatırlatması 02:00'de değil, yatmadan önce 23:30'da gelir.
+    """
+    at = due - timedelta(hours=hours)
+    local = at.astimezone(LOCAL_TZ)
+    if QUIET_FROM <= local.hour < QUIET_UNTIL:
+        at = local.replace(hour=QUIET_FROM, minute=0, second=0, microsecond=0) - QUIET_LEAD
+    return at
+
+
 def reminder_messages(course_assignments, courses, state, now):
     """Teslimi yaklaşan, henüz teslim edilmemiş ödevler için (anahtarlar, mesaj) döndürür."""
     out = []
@@ -180,10 +209,11 @@ def reminder_messages(course_assignments, courses, state, now):
             due_iso = a.get("due_at")
             if not due_iso or a.get("published") is False or is_submitted(a):
                 continue
-            left = parse_time(due_iso) - now
+            due = parse_time(due_iso)
+            left = due - now
             if left <= timedelta(0):
                 continue
-            hit = next(((h, icon) for h, icon in REMINDER_HOURS if left <= timedelta(hours=h)), None)
+            hit = next(((h, icon) for h, icon in REMINDER_HOURS if now >= remind_at(due, h)), None)
             if not hit:
                 continue
             hours, icon = hit
@@ -320,6 +350,9 @@ def run(canvas, send, state, now=None):
 
 
 def main():
+    if skip_for_quiet_hours():
+        print("Sessiz saatler: Canvas kontrolü sabaha bırakıldı")
+        return
     canvas = Canvas(os.environ["CANVAS_BASE_URL"], os.environ["CANVAS_TOKEN"])
     sent = run(canvas, telegram.send, State("canvas"))
     print(f"{sent} bildirim gönderildi")

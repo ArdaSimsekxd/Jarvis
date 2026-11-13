@@ -57,10 +57,20 @@ export const MORNING_HOUR = 8;      // Türkiye saati
 export const MORNING_UNTIL = 12;    // bu saatten sonra o günün özeti artık gönderilmez
 export const EVENING_HOUR = 21;     // akşam önizlemesi; gece yarısına kadar yakalanır
 
+// Sessiz saatler (Türkiye saati): bu aralıkta Canvas/mail kontrolü başlatılmaz, yani bildirim gelmez.
+// Birikenler sabah ilk kontrolde gönderilir. Aynı değerler Python tarafında da var: jarvis/agents/canvas_notifier.py
+export const QUIET_FROM = 0;
+export const QUIET_UNTIL = 7;
+
+export function isQuiet(nowMs) {
+  const { hh } = trParts(nowMs);
+  return hh >= QUIET_FROM && hh < QUIET_UNTIL;
+}
+
 export function dueJobs(nowMs) {
   const p = trParts(nowMs);
   const jobs = [];
-  if (p.mm % CANVAS_EVERY_MIN < 2) jobs.push("canvas");   // bot 2 dakikada bir uyanır: :00, :10, :20 ...
+  if (p.mm % CANVAS_EVERY_MIN < 2 && !isQuiet(nowMs)) jobs.push("canvas");   // bot 2 dakikada bir uyanır: :00, :10, :20 ...
   if (p.hh >= MORNING_HOUR && p.hh < MORNING_UNTIL) jobs.push("morning");   // günde bir kez, çağıran taraf süzer
   if (p.hh >= EVENING_HOUR) jobs.push("evening");                             // günde bir kez
   return jobs;
