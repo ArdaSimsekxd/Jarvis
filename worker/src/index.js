@@ -1,11 +1,15 @@
 // Jarvis botu: Telegram'dan gelen komutlara anında cevap verir, hatırlatmaları zamanında gönderir.
-import { HELP, dateKey, dueJobs, esc, fmtDateTime, formatMenu, fmtDate, parseCommand, parseDay, parseReminder } from "./logic.js";
+import {
+  HELP, dateKey, dueJobs, esc, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
+  parseCommand, parseDay, parseReminder, parseSchedule,
+} from "./logic.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
 const MAX_TEXT = 500;
-const WORKFLOWS = { canvas: "canvas.yml", morning: "morning.yml" };
-const MORNING_KEY = "sched:morning";   // sabah özetinin en son başlatıldığı gün
+const WORKFLOWS = { canvas: "canvas.yml", morning: "morning.yml", evening: "evening.yml" };
+const DAILY_KEYS = { morning: "sched:morning", evening: "sched:evening" };   // günde bir kez çalışan işlerin en son başlatıldığı gün
+const MAX_COURSES = 40;                // ücretsiz planda bir istekte en fazla 50 alt istek yapılabilir
 const WARN_KEY = "sched:warn";         // anahtar uyarısının en son gönderildiği gün
 
 async function telegram(env, method, body) {
@@ -48,12 +52,31 @@ async function dispatchWorkflow(env, job) {
         "User-Agent": "jarvis-worker",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ref: "main", inputs: job === "morning" ? { otomatik: "true" } : {} }),
+      body: JSON.stringify({ ref: "main", inputs: job in DAILY_KEYS ? { otomatik: "true" } : {} }),
     });
     return res.status;
   } catch {
     return 0;
   }
+}
+
+async function canvasGet(env, path) {
+  const res = await fetch(`${env.CANVAS_BASE_URL.replace(/\/+$/, "")}/api/v1/${path}`, {
+    headers: { Authorization: `Bearer ${env.CANVAS_TOKEN}` },
+  });
+  if (!res.ok) throw new Error(`canvas ${res.status}`);
+  return res.json();
+}
+
+// Aktif dersleri ve her dersin ödevlerini (teslim bilgisiyle) getirir.
+async function canvasData(ctx) {
+  const all = await ctx.canvas("courses?enrollment_state=active&per_page=100&include[]=total_scores");
+  const courses = (Array.isArray(all) ? all : []).filter((c) => c?.id && !c.access_restricted_by_date).slice(0, MAX_COURSES);
+  const lists = await Promise.all(courses.map((c) =>
+    ctx.canvas(`courses/${c.id}/assignments?per_page=100&include[]=submission&order_by=due_at`)
+      .then((list) => (Array.isArray(list) ? list : []))
+      .catch(() => [])));   // tek bir derse erişilemese de diğerleri gösterilsin
+  return { courses, assignments: new Map(courses.map((c, i) => [c.id, lists[i]])) };
 }
 
 // Hatırlatma anahtarı zamana göre sıralanır: rem:<15 haneli ms>:<kimlik>
@@ -82,6 +105,24 @@ async function cmdYemek(args, ctx) {
   const menu = await ctx.fetchMenu();
   if (!menu) return "Menüye şu an ulaşamadım, birazdan tekrar dener misin?";
   return formatMenu(menu, day) ?? `🍽 <b>${esc(fmtDate(day))}</b>\n\nBu gün için menü bilgisi yok.`;
+}
+
+async function cmdCanvas(ctx, format) {
+  if (!ctx.canvas) return "Canvas bağlantısı henüz kurulmamış. <b>Botu kur</b> iş akışını bir kez çalıştırmak gerekiyor.";
+  try {
+    const { courses, assignments } = await canvasData(ctx);
+    return format(courses, assignments, ctx.now);
+  } catch (err) {
+    console.error("canvas okunamadı", err?.message);
+    return "Canvas'a şu an ulaşamadım, birazdan tekrar dener misin?";
+  }
+}
+
+function cmdDersler(args, ctx) {
+  const day = parseDay(args, ctx.now);
+  if (day === null) return "Günü anlayamadım. Örnekler: <code>/dersler</code>, <code>/dersler yarın</code>, <code>/dersler salı</code>";
+  if (!Object.keys(ctx.schedule ?? {}).length) return "Ders programı henüz girilmemiş.";
+  return formatSchedule(ctx.schedule, day) ?? `📚 <b>${esc(fmtDate(day))}</b>\n\nBu gün ders yok.`;
 }
 
 async function cmdHatirlat(args, ctx) {
@@ -122,6 +163,9 @@ export async function handleMessage(message, ctx) {
   let reply;
   if (!cmd) reply = "Komutları görmek için /yardim yaz.";
   else if (cmd.command === "yemek") reply = await cmdYemek(cmd.args, ctx);
+  else if (["odevler", "odev"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatPending);
+  else if (["notlar", "not"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatGrades);
+  else if (["dersler", "ders", "program"].includes(cmd.command)) reply = cmdDersler(cmd.args, ctx);
   else if (cmd.command === "hatirlat") reply = await cmdHatirlat(cmd.args, ctx);
   else if (cmd.command === "hatirlatmalar") reply = await cmdListe(ctx);
   else if (cmd.command === "sil") reply = await cmdSil(cmd.args, ctx);
@@ -143,19 +187,20 @@ export async function sendDueReminders(ctx) {
   return sent;
 }
 
-// Zamanı gelen işleri (Canvas/mail kontrolü, sabah özeti) GitHub'da başlatır.
+// Zamanı gelen işleri (Canvas/mail kontrolü, sabah özeti, akşam önizlemesi) GitHub'da başlatır.
 // GH_TOKEN girilmemişse hiçbir şey yapmaz; o durumda GitHub'ın kendi zamanlayıcısı çalışır.
 export async function runSchedule(ctx) {
   if (!ctx.dispatch) return [];
   const today = dateKey(ctx.now);
   const started = [];
   for (const job of dueJobs(ctx.now)) {
-    if (job === "morning" && (await ctx.kv.get(MORNING_KEY)) === today) continue;
+    const dailyKey = DAILY_KEYS[job];
+    if (dailyKey && (await ctx.kv.get(dailyKey)) === today) continue;
     const status = await ctx.dispatch(job);
     if (status === 204) {
-      if (job === "morning") await ctx.kv.put(MORNING_KEY, today);
+      if (dailyKey) await ctx.kv.put(dailyKey, today);
       started.push(job);
-    } else if ([401, 403, 404].includes(status) && (await ctx.kv.get(WARN_KEY)) !== today) {
+    } else if ((status === 401 || status === 403 || (status === 404 && job === "canvas")) && (await ctx.kv.get(WARN_KEY)) !== today) {
       // Anahtar silinmiş ya da süresi dolmuş: günde bir kez haber ver.
       await ctx.kv.put(WARN_KEY, today);
       await ctx.send("⚠️ Canvas ve mail kontrolünü başlatamadım. GitHub'daki <code>DISPATCH_TOKEN</code> anahtarının süresi dolmuş olabilir; yenisini üretip aynı isimle kaydet, sonra <b>Botu kur</b> iş akışını çalıştır.");
@@ -172,6 +217,8 @@ function context(env, now = Date.now()) {
     send: sender(env),
     fetchMenu: () => fetchMenu(env),
     dispatch: env.GH_TOKEN && env.GITHUB_REPO ? (job) => dispatchWorkflow(env, job) : null,
+    canvas: env.CANVAS_TOKEN && env.CANVAS_BASE_URL ? (path) => canvasGet(env, path) : null,
+    schedule: parseSchedule(env.SCHEDULE),
     id: () => crypto.randomUUID().slice(0, 8),
   };
 }

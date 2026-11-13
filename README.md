@@ -6,7 +6,8 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 | --- | --- | --- |
 | **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not, mesaj ve ders materyalini (dosya, sayfa, bağlantı) haber verir. Teslim etmediğin ödevler için teslime 24 saat ve 3 saat kala hatırlatır |
 | **Okul maili** | 10 dakikada bir | Okul mailine (Zimbra) gelen yeni mailleri gönderen, konu ve kısa önizlemeyle haber verir. Mailleri okunmuş işaretlemez |
-| **Sabah özeti** | Her sabah 08:00 | Gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
+| **Sabah özeti** | Her sabah 08:00 | Günün derslerini, gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
+| **Akşam önizlemesi** | Her akşam 21:00 | Bu gece ve yarın teslim edilecekleri, yarının derslerini ve yemek menüsünü tek mesajda toplar. Yarın için söylenecek bir şey yoksa mesaj atmaz |
 | **Bot** | Anında | Telegram'dan yazdığın komutlara cevap verir, kişisel hatırlatmaları zamanında gönderir |
 
 Özeti beklemeden görmek için: **Actions** sekmesi > **Sabah özeti** > **Run workflow**.
@@ -17,6 +18,9 @@ Telegram'da Jarvis botuna yazılır:
 
 | Komut | Ne yapar |
 | --- | --- |
+| `/odevler` | Bekleyen ve geciken ödevler (Canvas'tan o an okunur) |
+| `/notlar` | Son girilen notlar ve derslerdeki güncel durum |
+| `/dersler` | Bugünün dersleri. `/dersler yarın`, `/dersler salı` da olur |
 | `/yemek` | Bugünün menüsü. `/yemek yarın`, `/yemek cuma`, `/yemek 17.11` de olur |
 | `/hatirlat 15:00 kütüphane` | Bugün 15:00'te hatırlatır (saat geçtiyse yarın) |
 | `/hatirlat yarın 09:30 hocaya mail` | Gün adıyla: `yarın`, `cuma`, `20.11` |
@@ -26,6 +30,17 @@ Telegram'da Jarvis botuna yazılır:
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.
+
+## Ders programı
+
+Ders programı kişisel bilgi olduğu ve repo herkese açık olduğu için dosyada değil, `DERS_PROGRAMI` adlı secret'ta durur. Her satırda bir ders yazılır; sıra gün, saat aralığı, ders, derslik ve isteğe bağlı bir nottur:
+
+```
+Pazartesi 10:00-11:45 EE452 F0C04
+Salı 11:00-12:45 EE4005 EECAPSLAB uygulama
+```
+
+Programı değiştirdikten sonra botun yeni programı görmesi için **Actions** > **Botu kur** > **Run workflow** ile botu bir kez yeniden kur.
 
 ## Yemek menüsü
 
@@ -64,6 +79,7 @@ Repoda **Settings > Secrets and variables > Actions > New repository secret** il
 | `ZIMBRA_EMAIL` | Okul mail adresi (isteğe bağlı, mail ajanı için) |
 | `ZIMBRA_PASSWORD` | Okul maili şifresi (isteğe bağlı, mail ajanı için) |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare'de "Edit Cloudflare Workers" şablonuyla üretilen anahtar (isteğe bağlı, bot için) |
+| `DERS_PROGRAMI` | Ders programın, yukarıdaki biçimde (isteğe bağlı: `/dersler`, sabah özeti ve akşam önizlemesi için) |
 | `DISPATCH_TOKEN` | GitHub'da üretilen, yalnızca bu repoda "Actions: Read and write" izni olan anahtar (isteğe bağlı ama önerilir: kontrollerin zamanında çalışması için) |
 
 Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen aynı sayfada **Variables** sekmesine `CANVAS_BASE_URL` ekle.
@@ -76,7 +92,7 @@ Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen
 
 ## Bilmen gerekenler
 
-- GitHub'ın kendi zamanlayıcısı güvenilir değil: 10 dakikalık bir işi saatlerce geciktirebiliyor. Bu yüzden `DISPATCH_TOKEN` girildiğinde Canvas/mail kontrolünü (10 dakikada bir) ve sabah özetini (08:00) bot başlatır. GitHub'ın zamanlayıcısı yedek olarak durur; sabah özeti ikisi birden çalışsa da günde bir kez gider.
+- GitHub'ın kendi zamanlayıcısı güvenilir değil: 10 dakikalık bir işi saatlerce geciktirebiliyor. Bu yüzden `DISPATCH_TOKEN` girildiğinde Canvas/mail kontrolünü (10 dakikada bir), sabah özetini (08:00) ve akşam önizlemesini (21:00) bot başlatır. GitHub'ın zamanlayıcısı yedek olarak durur; sabah özeti ikisi birden çalışsa da günde bir kez gider.
 - `DISPATCH_TOKEN` şuradan üretilir: GitHub > Settings > Developer settings > Fine-grained tokens. Yalnızca bu repo seçilir, izin olarak yalnızca **Actions: Read and write** verilir. Süresi dolarsa bot Telegram'dan haber verir.
 - Repoda 60 gün hiç değişiklik olmazsa GitHub zamanlanmış görevi durdurur ve sana e-posta atar; Actions sekmesinden tek tıkla yeniden açılır.
 - Bot Cloudflare Workers'ta (ücretsiz plan) çalışır. `worker/` klasörü değişince **Botu kur** iş akışı onu kendiliğinden yeniden kurar ve Telegram'a bağlar.
@@ -103,6 +119,8 @@ jarvis/
   agents/canvas_notifier.py   Canvas'ı okur, yeni olayları bulur, teslimleri hatırlatır
   agents/mail_notifier.py     Okul mailine bakar, yeni mailleri ve yemek listesini bulur
   agents/morning_summary.py   Sabah özetini hazırlar
+  agents/evening_preview.py   Akşam önizlemesini hazırlar
+  schedule.py                 Ders programını okur (DERS_PROGRAMI secret'ından)
   channels/telegram.py        Kanal: mesaj gönderir (bütün ajanlar ortak kullanır)
   state.py                    Hafıza: görülen olayları tutar
   menu.py, menu_ocr.py        Yemek menüsünü okur; listeyi resimden çıkarır
@@ -111,6 +129,7 @@ worker/                       Bot: komutlara anında cevap veren Cloudflare Work
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
 .github/workflows/morning.yml 08:00 zamanlayıcısı
+.github/workflows/evening.yml 21:00 zamanlayıcısı
 .github/workflows/deploy-worker.yml  Botu Cloudflare'e kurar
 ```
 

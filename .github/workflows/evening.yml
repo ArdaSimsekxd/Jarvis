@@ -1,0 +1,52 @@
+name: Akşam önizlemesi
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # yedek (18:00 UTC = 21:00 Türkiye). GitHub geciktirebiliyor; asıl tetikleyici bot (worker)
+  workflow_dispatch:        # Actions sekmesinden elle çalıştırmak için
+    inputs:
+      otomatik:
+        description: "Günde yalnızca bir kez gönder (bot böyle çalıştırır; elle denerken boş bırak)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evening-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Bot ve GitHub'ın yedek zamanlayıcısı aynı gün ikisi de çalışabilir; önizleme yine de bir kez gider.
+      - name: Bugünün tarihi
+        id: day
+        run: echo "day=$(TZ=Europe/Istanbul date +%F)" >> "$GITHUB_OUTPUT"
+      - name: Bugün gönderildi mi?
+        id: mark
+        if: ${{ github.event_name == 'schedule' || inputs.otomatik }}
+        uses: actions/cache@v4
+        with:
+          path: .evening-sent
+          key: evening-sent-${{ steps.day.outputs.day }}
+
+      - name: Önizlemeyi gönder
+        if: ${{ steps.mark.outputs.cache-hit != 'true' }}
+        env:
+          CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}
+          CANVAS_TOKEN: ${{ secrets.CANVAS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DERS_PROGRAMI: ${{ secrets.DERS_PROGRAMI }}
+        run: |
+          python -m jarvis.agents.evening_preview
+          touch .evening-sent   # iş başarıyla biterse bugünün işareti olarak saklanır
