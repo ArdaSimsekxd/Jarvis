@@ -61,7 +61,10 @@ function fakeKv() {
 // Sahte rezervasyon sitesi: resmi API'nin kullandığımız uçları.
 function fakeSite({ password = "pw", reject = null, existing = [] } = {}) {
   const site = { calls: [], reservations: [...existing], logins: 0, signouts: 0, down: false, reject };
-  const json = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
+  const raw = (status, text) => ({ status, ok: status >= 200 && status < 300, text: async () => text });
+  const json = (status, body) => raw(status, JSON.stringify(body));
+  // Gerçek site, bu alanlar istekte yoksa HTTP 500 ve düz yazı döndürüyor.
+  const REQUIRED = ["title", "description", "allowParticipation", "termsAccepted"];
   site.fetch = async (url, init) => {
     if (site.down) throw new Error("ağ yok");
     const path = url.replace("https://site.test/Web/Services/index.php/", "");
@@ -73,7 +76,7 @@ function fakeSite({ password = "pw", reject = null, existing = [] } = {}) {
         ? json(200, { sessionToken: "tok", userId: 7, isAuthenticated: true })
         : json(200, { sessionToken: null, userId: null, isAuthenticated: false, message: "Login credentials rejected" });
     }
-    if (path === "Authentication/SignOut") { site.signouts += 1; return { status: 200, ok: true, json: async () => { throw new Error("boş"); } }; }
+    if (path === "Authentication/SignOut") { site.signouts += 1; return raw(200, ""); }
     assert.equal(init.headers["X-Booked-SessionToken"], "tok");
     assert.equal(init.headers["X-Booked-UserId"], "7");
     if (init.method === "GET" && path === "Accessories/") return json(200, { accessories: [{ id: 4, name: "havlu" }, { id: 9, name: "Fitness Number" }] });
@@ -82,7 +85,8 @@ function fakeSite({ password = "pw", reject = null, existing = [] } = {}) {
       return json(200, { reservations: site.reservations.map((r) => ({ referenceNumber: r.ref, startDate: r.startDate, userId: 7, resourceId: 3 })) });
     }
     if (init.method === "POST" && path === "Reservations/") {
-      if (site.reject) return json(409, { errors: [site.reject], message: null });
+      if (site.crash || REQUIRED.some((k) => !(k in body))) return raw(500, "Exception was logged.");
+      if (site.reject) return json(400, { errors: [site.reject], message: null });
       const ref = `ref${site.reservations.length + 1}`;
       site.reservations.push({ ref, ...body });
       return json(201, { referenceNumber: ref, isPendingApproval: false });
@@ -127,6 +131,8 @@ test("fitness uçtan uca: haftalık istek, açılınca alma, iptal, kaldırma", 
     ref: "ref1", resourceId: 3, userId: 7, title: "", description: "",
     startDateTime: "2026-11-17T13:00:00+0300", endDateTime: "2026-11-17T14:30:00+0300",
     accessories: [{ accessoryId: 9, quantityRequested: 1 }],   // kişi sayısı: 1
+    customAttributes: [], resources: [], participants: [], invitees: [], participatingGuests: [], invitedGuests: [],
+    recurrenceRule: null, startReminder: null, endReminder: null, allowParticipation: false, retryParameters: [], termsAccepted: false,
   });
 
   // Zamanlayıcı: alınacak yeni bir şey yokken siteye hiç gitmez.
@@ -241,12 +247,19 @@ test("fitness: yanlış şifrede sık denemez; siteye ulaşılamazsa söyler; ku
   // Mevcut randevular okunamıyorsa çift randevu riskine girmez, hiç almaz.
   const blind = fakeSite();
   const realFetch = blind.fetch;
-  blind.fetch = async (url, init) => (init.method === "GET" && url.includes("/Reservations/?") ? { status: 500, ok: false, json: async () => null } : realFetch(url, init));
+  blind.fetch = async (url, init) => (init.method === "GET" && url.includes("/Reservations/?") ? { status: 500, ok: false, text: async () => "" } : realFetch(url, init));
   const ctx4 = fakeCtx(blind);
   await handleMessage(msg("/fitness salı 13:00"), ctx4);
   assert.match(ctx4.sent.pop(), /Siteye ulaşamadım/);
   assert.equal(blind.calls.includes("POST Reservations/"), false);
   assert.equal(blind.signouts, 1);
+
+  // Site kendi içinde hata verirse (JSON olmayan cevap) durum kodu ve kısa metin gösterilir.
+  const broken = fakeSite();
+  broken.crash = true;
+  const ctx5 = fakeCtx(broken);
+  await handleMessage(msg("/fitness salı 13:00"), ctx5);
+  assert.match(ctx5.sent.pop(), /Sitenin cevabı: HTTP 500 \(Exception was logged\.\)/);
 
   const down = fakeSite();
   down.down = true;
