@@ -12,6 +12,7 @@ import os
 import re
 from email.header import decode_header, make_header
 from email.utils import parseaddr
+from urllib.parse import urlparse
 
 from jarvis.agents.canvas_notifier import esc, skip_for_quiet_hours, strip_html
 from jarvis.channels import telegram
@@ -72,6 +73,49 @@ def body_preview(msg):
     # Yeni yazılan kısım boşsa (ör. sadece iletilen bir mail) alıntıyı da göster.
     return (strip_html(own_text(text, is_html), PREVIEW_CHARS)
             or strip_html(own_text(text, is_html, keep_quote=True), PREVIEW_CHARS))
+
+
+# Canvas her duyuru, ödev ve tartışma için bir de mail atar; bunları Canvas ajanı zaten bildiriyor.
+CANVAS_ORIGIN = re.compile(r"https?://[^/\s\"'<>]+/profile/communication", re.I)   # her Canvas mailinin altındaki ayar bağlantısı
+CANVAS_LINK = re.compile(r"https?://([^/\s\"'<>]+)/courses/\d+/(announcements|discussion_topics|assignments)/\d+([^\s\"'<>]*)", re.I)
+
+
+def text_parts(msg):
+    """Mailin yazı bölümlerini (düz ve HTML) birleştirir."""
+    out = []
+    for part in msg.walk():
+        if part.get_content_maintype() != "text" or part.get_filename():
+            continue
+        try:
+            out.append(part.get_content())
+        except Exception:
+            pass
+    return "\n".join(out)
+
+
+def canvas_duplicate(msg, canvas_host=""):
+    """Bu mail, Canvas ajanının zaten bildirdiği bir şeyin (duyuru, tartışma, ödev) Canvas'tan gelen kopyası mı?
+
+    İki koşul birden aranır: mail Canvas'tan gelmiş olmalı ve bir duyuru/tartışma/ödev sayfasına bağlantı vermeli.
+    Mesajlar ve teslim yorumları gibi diğer Canvas mailleri bildirilmeye devam eder, çünkü içerikleri başka yerden gelmiyor.
+    """
+    text = text_parts(msg)
+    _, addr = parseaddr(decode(msg.get("From")))
+    domain = addr.rsplit("@", 1)[-1].lower() if "@" in addr else ""
+    # Canvas, bildirim maillerini "Auto-Submitted: auto-generated" başlığıyla gönderir.
+    automatic = str(msg.get("Auto-Submitted") or "").lower().startswith("auto-generated")
+    from_canvas = (bool(CANVAS_ORIGIN.search(text)) or domain.endswith("instructure.com")
+                   or bool(canvas_host) and (domain == canvas_host.lower() or automatic))
+    if not from_canvas:
+        return False
+    for m in CANVAS_LINK.finditer(text):
+        host, kind, rest = m.group(1).lower(), m.group(2).lower(), m.group(3).lower()
+        if canvas_host and host != canvas_host.lower():
+            continue
+        if kind == "assignments" and "submissions" in rest:
+            continue   # not ya da teslim yorumu: yorumu yalnızca mail taşıyor
+        return True
+    return False
 
 
 def attachment_names(msg):
@@ -181,8 +225,11 @@ class Mailbox:
             pass
 
 
-def run(mailbox, send, state, on_message=None):
-    """Yeni mailleri bildirir. on_message(msg): her yeni mail için ek iş (ör. yemek menüsü)."""
+def run(mailbox, send, state, on_message=None, canvas_host=""):
+    """Yeni mailleri bildirir. on_message(msg): her yeni mail için ek iş (ör. yemek menüsü).
+
+    Canvas ajanının zaten bildirdiği Canvas mailleri (duyuru, tartışma, ödev) atlanır.
+    """
     data = state.data
     first_run = "mail_last_uid" not in data or data.get("mail_uidvalidity") != mailbox.uidvalidity
     if first_run:
@@ -195,14 +242,16 @@ def run(mailbox, send, state, on_message=None):
 
     uids = mailbox.uids_after(data["mail_last_uid"])
     skipped = max(len(uids) - MAX_PER_RUN, 0)
-    sent = 0
+    sent = duplicates = 0
     try:
         if skipped:
             send(f"📧 {len(uids)} yeni mail var; en yeni {MAX_PER_RUN} tanesini gösteriyorum.")
             data["mail_last_uid"] = uids[skipped - 1]
         for uid in uids[skipped:]:
             msg = mailbox.fetch(uid)
-            if msg is not None:
+            if msg is not None and canvas_duplicate(msg, canvas_host):
+                duplicates += 1
+            elif msg is not None:
                 send(notification(msg))
                 sent += 1
                 if on_message:
@@ -213,6 +262,8 @@ def run(mailbox, send, state, on_message=None):
             data["mail_last_uid"] = uid
     finally:
         state.save()
+        if duplicates:
+            print(f"{duplicates} Canvas maili atlandı (Canvas bildirimi olarak zaten gidiyor)")
     return sent
 
 
@@ -227,7 +278,9 @@ def main():
     mailbox = Mailbox(os.environ.get("ZIMBRA_IMAP_HOST") or DEFAULT_HOST, user, password)
     menu_dir = os.environ.get("MENU_IMAGE_DIR")
     try:
-        sent = run(mailbox, telegram.send, State("mail"), on_message=lambda m: save_menu_image(m, menu_dir))
+        canvas_host = urlparse(os.environ.get("CANVAS_BASE_URL") or "").hostname or ""
+        sent = run(mailbox, telegram.send, State("mail"), on_message=lambda m: save_menu_image(m, menu_dir),
+                   canvas_host=canvas_host)
         if os.environ.get("MENU_REIMPORT") == "true":
             # Elle tetikleme: gelen kutusundaki en son yemek listesini yeniden oku.
             msg = mailbox.latest_with("yemek", lambda m: menu_image(m) is not None)
