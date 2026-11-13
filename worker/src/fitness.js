@@ -172,8 +172,9 @@ async function call(cfg, method, path, { body, session } = {}) {
     throw new BookedError("network");
   }
   let data = null;
-  try { data = await res.json(); } catch { /* gövde boş ya da JSON değil */ }
-  return { status: res.status, ok: res.ok, data };
+  let text = "";
+  try { text = await res.text(); data = JSON.parse(text); } catch { /* gövde boş ya da JSON değil */ }
+  return { status: res.status, ok: res.ok, data, text: data ? "" : text };
 }
 
 async function openSession(cfg) {
@@ -209,6 +210,8 @@ async function openSession(cfg) {
       // Bu adresin sonunda / olmalı.
       const res = await call(cfg, "POST", "Reservations/", {
         session,
+        // Site, istekte bulunmayan bir alanı okumaya kalkınca HTTP 500 veriyor (özellikle allowParticipation
+        // ve termsAccepted). Bu yüzden belgelerdeki bütün alanlar, boş değerleriyle de olsa gönderilir.
         body: {
           resourceId: cfg.resourceId,
           userId: session.userId,
@@ -217,12 +220,26 @@ async function openSession(cfg) {
           title: "",
           description: "",
           accessories: accessoryId == null ? [] : [{ accessoryId, quantityRequested: 1 }],
+          customAttributes: [],
+          resources: [],
+          participants: [],
+          invitees: [],
+          participatingGuests: [],
+          invitedGuests: [],
+          recurrenceRule: null,
+          startReminder: null,
+          endReminder: null,
+          allowParticipation: false,
+          retryParameters: [],
+          termsAccepted: false,
         },
       });
       if (res.ok && res.data?.referenceNumber) return { ref: res.data.referenceNumber, pending: !!res.data.isPendingApproval };
       if (res.status === 401) throw new BookedError("auth");
       const errors = Array.isArray(res.data?.errors) ? res.data.errors : [];
-      throw new BookedError("rejected", String(errors[0] ?? res.data?.message ?? `HTTP ${res.status}`).slice(0, 300));
+      // JSON olmayan kısa bir cevap (HTML sayfası değilse) nedeni anlamaya yarar.
+      const plainText = res.text && res.text.length <= 200 && !res.text.includes("<") ? ` (${res.text.trim()})` : "";
+      throw new BookedError("rejected", String(errors[0] ?? res.data?.message ?? `HTTP ${res.status}${plainText}`).slice(0, 300));
     },
     async remove(ref) {
       const res = await call(cfg, "DELETE", `Reservations/${encodeURIComponent(ref)}`, { session });
