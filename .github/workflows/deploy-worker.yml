@@ -24,6 +24,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}   # isteğe bağlı: botun işleri zamanında başlatması için
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

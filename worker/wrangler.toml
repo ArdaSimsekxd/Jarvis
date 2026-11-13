@@ -10,7 +10,8 @@ binding = "KV"
 id = "__KV_ID__"   # kurulum sırasında doldurulur
 
 [triggers]
-crons = ["*/2 * * * *"]   # hatırlatmalar 2 dakikada bir kontrol edilir
+crons = ["*/2 * * * *"]   # 2 dakikada bir: hatırlatmalar + GitHub'daki işlerin zamanlaması
 
 [vars]
+GITHUB_REPO = "ArdaSimsekxd/Jarvis"   # bot, Canvas/mail kontrolünü ve sabah özetini bu repoda başlatır
 MENU_URL = "https://raw.githubusercontent.com/ArdaSimsekxd/Jarvis/main/data/menu.json"

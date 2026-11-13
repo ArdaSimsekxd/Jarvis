@@ -50,6 +50,20 @@ export function fmtDate(ms) {
   return `${WEEKDAYS[p.wd]}, ${two(p.d)}.${two(p.m)}.${p.y}`;
 }
 
+// Zamanlayıcı: GitHub'ın kendi zamanlayıcısı işleri saatlerce geciktirebildiği için
+// Canvas/mail kontrolünü ve sabah özetini bot başlatır. Şu an zamanı gelen işleri döndürür.
+export const CANVAS_EVERY_MIN = 10;
+export const MORNING_HOUR = 8;      // Türkiye saati
+export const MORNING_UNTIL = 12;    // bu saatten sonra o günün özeti artık gönderilmez
+
+export function dueJobs(nowMs) {
+  const p = trParts(nowMs);
+  const jobs = [];
+  if (p.mm % CANVAS_EVERY_MIN < 2) jobs.push("canvas");   // bot 2 dakikada bir uyanır: :00, :10, :20 ...
+  if (p.hh >= MORNING_HOUR && p.hh < MORNING_UNTIL) jobs.push("morning");   // günde bir kez, çağıran taraf süzer
+  return jobs;
+}
+
 // "/yemek@bot yarın" -> { command: "yemek", args: "yarın" }
 export function parseCommand(text) {
   const m = /^\/([a-zA-Z_ğüşıöçĞÜŞİÖÇ]+)(?:@\w+)?(?:\s+([\s\S]*))?$/.exec(String(text ?? "").trim());

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { handleMessage, sendDueReminders } from "../src/index.js";
-import { dateKey, fmtDateTime, formatMenu, parseCommand, parseDay, parseReminder, trToMs } from "../src/logic.js";
+import { handleMessage, runSchedule, sendDueReminders } from "../src/index.js";
+import { dateKey, dueJobs, fmtDateTime, formatMenu, parseCommand, parseDay, parseReminder, trToMs } from "../src/logic.js";
 
 // Cuma 13.11.2026 10:00 Türkiye saati
 const NOW = trToMs(2026, 11, 13, 10, 0);
@@ -65,10 +65,12 @@ test("gerçek menü dosyası okunabiliyor", async () => {
 // Sahte KV: liste anahtar sırasıyla döner, metadata taşır.
 function fakeKv() {
   const store = new Map();
+  const values = new Map();
   return {
     store,
-    async put(key, _value, opts) { store.set(key, opts?.metadata); },
-    async delete(key) { store.delete(key); },
+    async put(key, value, opts) { store.set(key, opts?.metadata); values.set(key, value); },
+    async get(key) { return values.get(key) ?? null; },
+    async delete(key) { store.delete(key); values.delete(key); },
     async list({ prefix }) {
       const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => ({ name, metadata: store.get(name) }));
       return { keys, list_complete: true };
@@ -140,4 +142,50 @@ test("yabancı sohbetlere cevap verilmez; bilinmeyen komut ve düz yazı yönlen
   assert.match(ctx.sent.pop(), /Jarvis komutları/);
   await handleMessage(msg("/hatirlat dün 10:00 x"), ctx);
   assert.match(ctx.sent.pop(), /geçmişte/);
+});
+
+test("zamanlayıcı: hangi işin zamanı geldi", () => {
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 7, 50)), ["canvas"]);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 7, 52)), []);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 8, 0)), ["canvas", "morning"]);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 9, 4)), ["morning"]);   // 08:00 kaçtıysa sonradan yakalanır
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 12, 4)), []);
+});
+
+test("zamanlayıcı: işleri başlatır, sabah özeti günde bir kez", async () => {
+  const calls = [];
+  const at = (hh, mm, day = 13) => {
+    ctx.now = trToMs(2026, 11, day, hh, mm);
+    return runSchedule(ctx);
+  };
+  const ctx = fakeCtx();
+  assert.deepEqual(await runSchedule(ctx), []);   // anahtar yoksa (dispatch yok) hiçbir şey yapmaz
+
+  ctx.dispatch = async (job) => { calls.push(job); return 204; };
+  assert.deepEqual(await at(7, 50), ["canvas"]);
+  assert.deepEqual(await at(8, 0), ["canvas", "morning"]);
+  assert.deepEqual(await at(8, 2), []);
+  assert.deepEqual(await at(8, 10), ["canvas"]);
+  assert.deepEqual(await at(8, 0, 14), ["canvas", "morning"]);   // ertesi gün yeniden
+  assert.deepEqual(calls, ["canvas", "canvas", "morning", "canvas", "canvas", "morning"]);
+  assert.deepEqual(ctx.sent, []);
+});
+
+test("zamanlayıcı: başlatamazsa yeniden dener, anahtar bozuksa günde bir kez uyarır", async () => {
+  const ctx = fakeCtx();
+  let status = 500;
+  ctx.dispatch = async () => status;
+  const at = (hh, mm) => {
+    ctx.now = trToMs(2026, 11, 13, hh, mm);
+    return runSchedule(ctx);
+  };
+  assert.deepEqual(await at(8, 0), []);
+  assert.deepEqual(ctx.sent, []);                 // geçici hata: uyarı yok
+  status = 401;
+  assert.deepEqual(await at(8, 2), []);
+  assert.deepEqual(await at(8, 4), []);
+  assert.equal(ctx.sent.length, 1);               // tek uyarı
+  assert.match(ctx.sent[0], /DISPATCH_TOKEN/);
+  status = 204;
+  assert.deepEqual(await at(8, 6), ["morning"]);  // özet kaçmadı, sonraki turda gitti
 });
