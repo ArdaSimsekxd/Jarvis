@@ -31,6 +31,34 @@ def decode(value):
         return (value or "").strip()
 
 
+# Cevaplarda eski yazışmanın başladığı yer. HTML'de alıntı bölümü, düz yazıda alıntı başlığı satırı.
+HTML_QUOTE = re.compile(
+    r'(?is)<hr[^>]*id="?zwchr|data-marker="__(?:DIVIDER|HEADERS|QUOTED_TEXT)__"|<blockquote'
+    r'|class="[^"]*gmail_quote|id="?(?:divRplyFwdMsg|appendonsend)')
+TEXT_QUOTE = re.compile(
+    r"(?im)^[ \t]*(?:"
+    r"-{2,}[ \t]*(?:orijinal mesaj|original message|özgün ileti|iletilen mesaj|forwarded message).*"
+    r"|_{10,}[ \t]*"
+    r"|>.*"
+    r"|on .{1,200} wrote:[ \t]*"
+    r"|.{1,200} tarihinde .{1,200} yazdı:[ \t]*"
+    r"|(?:kimden|gönderen|from)[ \t]*:.*(?:\r?\n.*){0,3}?\r?\n[ \t]*(?:kime|alıcı|to|gönderilenler|gönderildi|tarih|sent|date)[ \t]*:.*"
+    r")$")
+# Okulun her maile kendiliğinden eklediği yasal uyarı ("Bu e-posta mesajı kişiye özel olup ...").
+DISCLAIMER = re.compile(r"(?is)bu\s+e-?posta\s+mesaj[ıi]\s+ki[sş]iye\s+[oö]zel.*")
+
+
+def own_text(text, is_html=False, keep_quote=False):
+    """Mailden sadece yeni yazılan kısmı bırakır: alıntılanan eski yazışmayı ve yasal uyarıyı atar."""
+    if is_html:
+        text = re.sub(r"(?is)<(style|script|head).*?</\1>", " ", text)
+    m = None if keep_quote else (HTML_QUOTE if is_html else TEXT_QUOTE).search(text)
+    if m:
+        # HTML'de eşleşme bir etiketin içinde olabilir; o etiketin başından kes.
+        text = text[:text.rfind("<", 0, m.start() + 1) if is_html else m.start()]
+    return DISCLAIMER.sub("", text)
+
+
 def body_preview(msg):
     """Mailin yazı kısmından kısa bir önizleme çıkarır."""
     part = msg.get_body(preferencelist=("plain", "html")) if hasattr(msg, "get_body") else None
@@ -40,9 +68,10 @@ def body_preview(msg):
         text = part.get_content()
     except Exception:
         return ""
-    if part.get_content_type() == "text/html":
-        text = re.sub(r"(?is)<(style|script|head).*?</\1>", " ", text)
-    return strip_html(text, PREVIEW_CHARS)
+    is_html = part.get_content_type() == "text/html"
+    # Yeni yazılan kısım boşsa (ör. sadece iletilen bir mail) alıntıyı da göster.
+    return (strip_html(own_text(text, is_html), PREVIEW_CHARS)
+            or strip_html(own_text(text, is_html, keep_quote=True), PREVIEW_CHARS))
 
 
 def attachment_names(msg):

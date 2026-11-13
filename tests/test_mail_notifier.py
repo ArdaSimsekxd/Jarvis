@@ -66,6 +66,37 @@ class MailNotifierTest(unittest.TestCase):
         self.assertEqual(len(seen), 2)
         self.assertEqual(self.run_once(box), [])
 
+    def test_preview_drops_quoted_reply_and_disclaimer(self):
+        uyari = ("Bu e-posta mesaji kisiye ozel olup, hizmete ozel bilgiler iceriyor olabilir. "
+                 "Bu e-posta mesaji, hic bir sekilde, herhangi bir amac icin cogaltilamaz.")
+        alinti = ('Kimden: "arda simsek" <arda@agu.edu.tr>\nKime: "beyza" <beyza@agu.edu.tr>\n'
+                  "Gönderilenler: 13 Kasım Cuma 2026 10:36:34\n\nMerhaba\n" + uyari)
+        cases = {
+            # Zimbra düz yazı cevabı (başlıklı ve başlıksız)
+            "selam123\n\n----- Orijinal Mesaj -----\n" + alinti: "selam123",
+            "selam123\n\n" + alinti: "selam123",
+            # diğer posta programları
+            "Tamamdır.\n\nOn Fri, Nov 13, 2026 at 10:36 AM Arda <a@agu.edu.tr> wrote:\n> Merhaba": "Tamamdır.",
+            "Olur.\n\n13 Kas 2026 Cum, 10:36 tarihinde Arda <a@agu.edu.tr> şunu yazdı:\n> Merhaba": "Olur.",
+            # alıntı yok, sadece yasal uyarı
+            "Merhaba\n\n" + uyari: "Merhaba",
+            # içinde 'Kimden:' geçen ama alıntı olmayan yazı kesilmez
+            "Kimden: sorusunu hocaya sordum, cevap bekliyorum.": "Kimden: sorusunu hocaya sordum, cevap bekliyorum.",
+        }
+        for body, expected in cases.items():
+            self.assertEqual(mn.body_preview(make("a@agu.edu.tr", "Re:", body)), expected, body)
+
+        html = ('<html><body><div>selam123</div><hr id="zwchr" data-marker="__DIVIDER__">'
+                '<div data-marker="__HEADERS__"><b>Kimden: </b>"arda simsek"</div><div>Merhaba ' + uyari + "</div></body></html>")
+        msg = make("a@agu.edu.tr", "Re:", "", html=html)
+        self.assertEqual(mn.own_text(msg.get_body(preferencelist=("html",)).get_content(), is_html=True).count("Kimden"), 0)
+        self.assertEqual(mn.strip_html(mn.own_text(html, is_html=True)), "selam123")
+
+        # Sadece iletilen bir mailde yeni yazı yoktur: alıntı gösterilir, yasal uyarı yine atılır.
+        forwarded = mn.body_preview(make("a@agu.edu.tr", "Fwd: sınav", "----- İletilen Mesaj -----\nKimden: hoca\nKime: sınıf\n\nSınav cuma günü.\n" + uyari))
+        self.assertIn("Sınav cuma günü.", forwarded)
+        self.assertNotIn("kisiye ozel", forwarded)
+
     def test_many_mails_are_capped(self):
         box = FakeMailbox({1: make("a@b.c", "ilk")})
         self.run_once(box)
