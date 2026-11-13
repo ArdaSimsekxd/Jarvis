@@ -40,8 +40,11 @@ cd worker
 npx --yes wrangler@4 deploy
 # DISPATCH_TOKEN varsa bot zamanlayıcı olur: Canvas/mail kontrolünü ve sabah özetini kendisi başlatır.
 [ -n "${DISPATCH_TOKEN:-}" ] || echo "::notice::DISPATCH_TOKEN girilmemiş; zamanlama GitHub'ın kendi (gecikebilen) zamanlayıcısında kalıyor."
-jq -n --arg a "$TELEGRAM_BOT_TOKEN" --arg b "$TELEGRAM_CHAT_ID" --arg c "$WEBHOOK_SECRET" --arg d "${DISPATCH_TOKEN:-}" \
-  '{TELEGRAM_BOT_TOKEN:$a, TELEGRAM_CHAT_ID:$b, WEBHOOK_SECRET:$c} + (if $d != "" then {GH_TOKEN:$d} else {} end)' > "$RUNNER_TEMP/secrets.json"
+# Boş olanlar yüklenmez; böylece o özellik bot tarafında "henüz kurulmamış" olarak görünür.
+jq -n --arg TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN" --arg TELEGRAM_CHAT_ID "$TELEGRAM_CHAT_ID" --arg WEBHOOK_SECRET "$WEBHOOK_SECRET" \
+  --arg GH_TOKEN "${DISPATCH_TOKEN:-}" --arg CANVAS_TOKEN "${CANVAS_TOKEN:-}" --arg CANVAS_BASE_URL "${CANVAS_BASE_URL:-}" \
+  --arg SCHEDULE "${DERS_PROGRAMI:-}" \
+  '$ARGS.named | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
 npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/secrets.json"
 rm -f "$RUNNER_TEMP/secrets.json"
 cd ..
@@ -56,6 +59,9 @@ curl -sS "$TG/setWebhook" \
 
 echo "6/6 Komut menüsü ayarlanıyor"
 curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands":[
+  {"command":"odevler","description":"Bekleyen ve geciken ödevler"},
+  {"command":"notlar","description":"Son girilen notlar"},
+  {"command":"dersler","description":"Bugünün dersleri"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},
   {"command":"hatirlatmalar","description":"Bekleyen hatırlatmalar"},

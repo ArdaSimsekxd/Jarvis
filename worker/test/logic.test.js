@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { handleMessage, runSchedule, sendDueReminders } from "../src/index.js";
-import { dateKey, dueJobs, fmtDateTime, formatMenu, parseCommand, parseDay, parseReminder, trToMs } from "../src/logic.js";
+import {
+  dateKey, dueJobs, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule,
+  parseCommand, parseDay, parseReminder, parseSchedule, trToMs,
+} from "../src/logic.js";
 
 // Cuma 13.11.2026 10:00 Türkiye saati
 const NOW = trToMs(2026, 11, 13, 10, 0);
@@ -150,6 +153,9 @@ test("zamanlayıcı: hangi işin zamanı geldi", () => {
   assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 8, 0)), ["canvas", "morning"]);
   assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 9, 4)), ["morning"]);   // 08:00 kaçtıysa sonradan yakalanır
   assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 12, 4)), []);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 21, 0)), ["canvas", "evening"]);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 13, 23, 58)), ["evening"]);
+  assert.deepEqual(dueJobs(trToMs(2026, 11, 14, 0, 2)), []);
 });
 
 test("zamanlayıcı: işleri başlatır, sabah özeti günde bir kez", async () => {
@@ -188,4 +194,127 @@ test("zamanlayıcı: başlatamazsa yeniden dener, anahtar bozuksa günde bir kez
   assert.match(ctx.sent[0], /DISPATCH_TOKEN/);
   status = 204;
   assert.deepEqual(await at(8, 6), ["morning"]);  // özet kaçmadı, sonraki turda gitti
+});
+
+test("zamanlayıcı: akşam önizlemesi günde bir kez; iş akışı henüz yoksa (404) uyarı yok", async () => {
+  const ctx = fakeCtx();
+  const calls = [];
+  let eveningStatus = 404;
+  ctx.dispatch = async (job) => { calls.push(job); return job === "evening" ? eveningStatus : 204; };
+  const at = (hh, mm) => { ctx.now = trToMs(2026, 11, 13, hh, mm); return runSchedule(ctx); };
+  assert.deepEqual(await at(21, 0), ["canvas"]);
+  assert.deepEqual(ctx.sent, []);
+  eveningStatus = 204;
+  assert.deepEqual(await at(21, 2), ["evening"]);
+  assert.deepEqual(await at(21, 4), []);
+  assert.deepEqual(await at(21, 10), ["canvas"]);
+});
+
+const PROGRAM = `
+# örnek
+Pazartesi 10:00-11:45 EE452 F0C04
+Cuma 14:00-15:45 OHS401 A/S13
+Cuma 9.00 - 11.45 GLB300 A/S22
+cuma 14:00-15:45 EE454 F0C04 uygulama
+bozuk satır
+`;
+
+test("ders programı", () => {
+  const s = parseSchedule(PROGRAM);
+  assert.deepEqual(Object.keys(s), ["1", "5"]);
+  assert.equal(formatSchedule(s, NOW),
+    "📚 <b>Cuma, 13.11.2026</b>\n\n• <b>09:00–11:45</b> GLB300 · A/S22\n• <b>14:00–15:45</b> EE454 · F0C04 (uygulama)\n• <b>14:00–15:45</b> OHS401 · A/S13");
+  assert.equal(formatSchedule(s, NOW + 24 * 3600000), null);
+  assert.deepEqual(parseSchedule(undefined), {});
+});
+
+// Canvas'ın verdiği biçimde örnek veri
+const COURSES = [
+  { id: 1, course_code: "EE452", enrollments: [{ type: "student", computed_current_score: 87.456, computed_current_grade: "BA" }] },
+  { id: 2, name: "Fizik <2>", enrollments: [{ type: "student", computed_current_score: null }] },
+];
+const asg = (name, due, extra = {}) => ({ id: name, name, due_at: due, published: true, html_url: `https://c/${name}`, ...extra });
+const ASSIGNMENTS = new Map([
+  [1, [
+    asg("Bugün", "2026-11-13T20:59:00Z"),                                               // Cuma 23:59
+    asg("Yarın", "2026-11-14T09:00:00Z"),
+    asg("Teslim edildi", "2026-11-15T09:00:00Z", { submission: { submitted_at: "2026-11-12T10:00:00Z" } }),
+    asg("Gecikti", "2026-11-11T20:59:00Z", { submission: { missing: true } }),
+    asg("Kağıt ödev", "2026-11-11T20:59:00Z", { submission_types: ["on_paper"] }),      // internetten teslim yok: gecikmiş sayılmaz
+    asg("Çok eski", "2026-10-01T20:59:00Z", { submission: { missing: true } }),
+    asg("Taslak", "2026-11-14T09:00:00Z", { published: false }),
+    asg("Tarihsiz", null),
+    asg("Lab 1", "2026-11-05T20:59:00Z", { points_possible: 100, submission: { workflow_state: "graded", score: 85, grade: "85", graded_at: "2026-11-10T09:00:00Z" } }),
+  ]],
+  [2, [
+    asg("Haftaya", "2026-11-18T14:00:00Z"),
+    asg("Çok uzak", "2027-02-01T14:00:00Z"),
+    asg("Quiz", "2026-11-06T20:59:00Z", { points_possible: 20, submission: { workflow_state: "graded", score: 17.5, grade: "B+", graded_at: "2026-11-12T09:00:00Z" } }),
+    asg("Muaf", "2026-11-06T20:59:00Z", { submission: { excused: true, grade: "EX" } }),
+  ]],
+]);
+
+test("bekleyen ödevler", () => {
+  const text = formatPending(COURSES, ASSIGNMENTS, NOW);
+  assert.equal(text, [
+    "📝 <b>Bekleyen ödevler</b>",
+    "",
+    "⚠️ <b>Gecikenler</b> (teslim edilmemiş)",
+    '• <b>Çarşamba 11.11 23:59</b> EE452: <a href="https://c/Gecikti">Gecikti</a>',
+    "",
+    "📅 <b>Yaklaşanlar</b>",
+    '• <b>Bugün 23:59</b> EE452: <a href="https://c/Bugün">Bugün</a>',
+    '• <b>Yarın 12:00</b> EE452: <a href="https://c/Yarın">Yarın</a>',
+    '• <b>Çarşamba 18.11 17:00</b> Fizik &lt;2&gt;: <a href="https://c/Haftaya">Haftaya</a>',
+  ].join("\n"));
+  assert.match(formatPending(COURSES, new Map(), NOW), /Bekleyen ödev yok/);
+});
+
+test("notlar", () => {
+  assert.equal(formatGrades(COURSES, ASSIGNMENTS), [
+    "📊 <b>Son notlar</b>",
+    '• Fizik &lt;2&gt;: <a href="https://c/Quiz">Quiz</a> → <b>B+ (17.5/20)</b> <i>12.11</i>',
+    '• EE452: <a href="https://c/Lab 1">Lab 1</a> → <b>85/100</b> <i>10.11</i>',
+    "",
+    "🎓 <b>Derslerde güncel durum</b>",
+    "• EE452: <b>%87.46 (BA)</b>",
+  ].join("\n"));
+  assert.match(formatGrades([{ id: 9, name: "X" }], new Map()), /Henüz girilmiş bir not görünmüyor/);
+});
+
+test("uçtan uca: /odevler, /notlar, /dersler", async () => {
+  const ctx = fakeCtx();
+  await handleMessage(msg("/odevler"), ctx);
+  assert.match(ctx.sent.pop(), /Canvas bağlantısı henüz kurulmamış/);
+  await handleMessage(msg("/dersler"), ctx);
+  assert.match(ctx.sent.pop(), /Ders programı henüz girilmemiş/);
+
+  const asked = [];
+  ctx.canvas = async (path) => {
+    asked.push(path);
+    if (path.startsWith("courses?")) return [...COURSES, { id: 3, name: "Kapalı", access_restricted_by_date: true }];
+    if (path.startsWith("courses/2/")) throw new Error("canvas 403");   // bir derse erişilemese de diğeri gösterilir
+    return ASSIGNMENTS.get(1);
+  };
+  ctx.schedule = parseSchedule(PROGRAM);
+
+  await handleMessage(msg("/odevler"), ctx);
+  const pending = ctx.sent.pop();
+  assert.match(pending, /Bugün 23:59<\/b> EE452/);
+  assert.doesNotMatch(pending, /Haftaya/);
+  assert.equal(asked.length, 3);   // dersler + erişilebilen 2 dersin ödevleri (kapalı ders sorulmaz)
+
+  await handleMessage(msg("/notlar"), ctx);
+  assert.match(ctx.sent.pop(), /Lab 1<\/a> → <b>85\/100<\/b>/);
+
+  await handleMessage(msg("/dersler"), ctx);
+  assert.match(ctx.sent.pop(), /Cuma, 13\.11\.2026[\s\S]*GLB300/);
+  await handleMessage(msg("/dersler pazartesi"), ctx);
+  assert.match(ctx.sent.pop(), /Pazartesi, 16\.11\.2026[\s\S]*EE452 · F0C04/);
+  await handleMessage(msg("/dersler yarın"), ctx);
+  assert.match(ctx.sent.pop(), /Bu gün ders yok/);
+
+  ctx.canvas = async () => { throw new Error("canvas 500"); };
+  await handleMessage(msg("/odevler"), ctx);
+  assert.match(ctx.sent.pop(), /Canvas'a şu an ulaşamadım/);
 });
