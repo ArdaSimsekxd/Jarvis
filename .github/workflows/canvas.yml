@@ -1,12 +1,18 @@
 name: Canvas bildirimleri
+# Adı Canvas ama 10 dakikalık bütün kontroller burada: Canvas ve okul maili.
 
 on:
   schedule:
     - cron: "*/10 * * * *"   # 10 dakikada bir (GitHub bazen birkaç dakika geciktirir)
   workflow_dispatch:          # Actions sekmesinden elle çalıştırmak için
+    inputs:
+      menu_reimport:
+        description: "Gelen kutusundaki son yemek listesini yeniden oku"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write   # yeni ayın yemek listesi data/menu.json dosyasına kaydedilir
 
 concurrency:
   group: canvas-notifier
@@ -37,6 +43,52 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m jarvis.agents.canvas_notifier
+
+      - name: Okul mailini kontrol et
+        if: ${{ !cancelled() }}   # Canvas adımı hata verse de maile bak
+        env:
+          ZIMBRA_EMAIL: ${{ secrets.ZIMBRA_EMAIL }}
+          ZIMBRA_PASSWORD: ${{ secrets.ZIMBRA_PASSWORD }}
+          ZIMBRA_IMAP_HOST: ${{ vars.ZIMBRA_IMAP_HOST }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MENU_IMAGE_DIR: ${{ runner.temp }}/menu
+          MENU_REIMPORT: ${{ inputs.menu_reimport }}
+        run: python -m jarvis.agents.mail_notifier
+
+      # Aşağıdaki adımlar sadece yemek listesi maili geldiğinde çalışır (ayda bir).
+      - name: Yemek listesi resmi geldi mi?
+        id: menu
+        if: ${{ !cancelled() }}
+        run: |
+          file=$(ls "$RUNNER_TEMP"/menu/menu.* 2>/dev/null | head -n 1 || true)
+          echo "image=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Resim okuyucuyu kur
+        if: ${{ !cancelled() && steps.menu.outputs.image != '' }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-tur
+          pip install -q pillow numpy
+
+      - name: Yemek listesini oku
+        id: import
+        if: ${{ !cancelled() && steps.menu.outputs.image != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # Ana dal dışındaki deneme çalışmaları dosyayı değiştirmez, sadece okunanı yazdırır.
+        run: python -m jarvis.menu_import "${{ steps.menu.outputs.image }}" ${{ github.ref != 'refs/heads/main' && '--dry-run' || '' }}
+
+      - name: Yeni menüyü kaydet
+        if: ${{ !cancelled() && steps.import.outputs.changed == 'true' && github.ref == 'refs/heads/main' }}
+        run: |
+          git config user.name "jarvis-bot"
+          git config user.email "jarvis-bot@users.noreply.github.com"
+          git add data/menu.json
+          git commit -m "Yemek listesini güncelle: ${{ steps.import.outputs.label }}"
+          git pull --rebase -q origin main
+          git push -q origin HEAD:main
 
       - name: Hafızayı kaydet
         if: always()
