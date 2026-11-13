@@ -28,6 +28,8 @@ jobs:
       CANVAS_TOKEN: ${{ secrets.CANVAS_TOKEN }}       # /odevler ve /notlar komutları için
       CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}
       DERS_PROGRAMI: ${{ secrets.DERS_PROGRAMI }}     # isteğe bağlı: /dersler komutu için
+      BOOKED_USERNAME: ${{ secrets.BOOKED_USERNAME }} # isteğe bağlı: /fitness komutu için rezervasyon sitesi girişi
+      BOOKED_PASSWORD: ${{ secrets.BOOKED_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

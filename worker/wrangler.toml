@@ -15,3 +15,5 @@ crons = ["*/2 * * * *"]   # 2 dakikada bir: hatırlatmalar + GitHub'daki işleri
 [vars]
 GITHUB_REPO = "ArdaSimsekxd/Jarvis"   # bot, Canvas/mail kontrolünü ve sabah özetini bu repoda başlatır
 MENU_URL = "https://raw.githubusercontent.com/ArdaSimsekxd/Jarvis/main/data/menu.json"
+BOOKED_URL = "https://booked.agu.edu.tr/Web"   # okulun rezervasyon sitesi; /fitness komutu resmi API'sini kullanır
+FITNESS_RESOURCE_ID = "3"                      # sitedeki FITNESS CENTER kaynağının numarası

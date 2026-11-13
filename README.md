@@ -8,6 +8,7 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 | **Okul maili** | 10 dakikada bir | Okul mailine (Zimbra) gelen yeni mailleri gönderen, konu ve kısa önizlemeyle haber verir. Mailleri okunmuş işaretlemez |
 | **Sabah özeti** | Her sabah 08:00 | Günün derslerini, gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
 | **Akşam önizlemesi** | Her akşam 21:00 | Bu gece ve yarın teslim edilecekleri, yarının derslerini ve yemek menüsünü tek mesajda toplar. Yarın için söylenecek bir şey yoksa mesaj atmaz |
+| **Fitness randevusu** | Randevu açılınca | Söylediğin gün ve saatler için okulun rezervasyon sitesinden fitness randevusu alır, sonucu haber verir |
 | **Bot** | Anında | Telegram'dan yazdığın komutlara cevap verir, kişisel hatırlatmaları zamanında gönderir |
 
 Özeti beklemeden görmek için: **Actions** sekmesi > **Sabah özeti** > **Run workflow**.
@@ -21,6 +22,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/odevler` | Bekleyen ve geciken ödevler (Canvas'tan o an okunur) |
 | `/notlar` | Son girilen notlar ve derslerdeki güncel durum |
 | `/dersler` | Bugünün dersleri. `/dersler yarın`, `/dersler salı` da olur |
+| `/fitness salı 13:00-14:30` | Her salı o saate fitness randevusu alır. Ayrıntı aşağıda |
 | `/yemek` | Bugünün menüsü. `/yemek yarın`, `/yemek cuma`, `/yemek 17.11` de olur |
 | `/hatirlat 15:00 kütüphane` | Bugün 15:00'te hatırlatır (saat geçtiyse yarın) |
 | `/hatirlat yarın 09:30 hocaya mail` | Gün adıyla: `yarın`, `cuma`, `20.11` |
@@ -30,6 +32,23 @@ Telegram'da Jarvis botuna yazılır:
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.
+
+## Fitness randevusu
+
+Bot, okulun rezervasyon sitesinden (LibreBooking) senin hesabınla fitness randevusu alır. Sitenin programlar için açtığı resmi kapıyı (API) kullanır; giriş ekranındaki güvenlik kodunu aşmaya çalışmaz. Kişi sayısını elle yaptığın gibi 1 olarak bildirir.
+
+| Komut | Ne yapar |
+| --- | --- |
+| `/fitness salı 13:00-14:30` | Her salı için ister. Açık olan haftaları hemen alır, sonrakileri açıldıkça alır |
+| `/fitness 27.11 13:00-14:30` | Sadece o gün için ister. `yarın`, `bu cuma` da olur |
+| `/fitness` | İsteklerin ve önümüzdeki 2 haftanın randevuları |
+| `/fitness sil 1` | Listedeki 1 numaralı isteği kaldırır (alınmış randevular durur) |
+| `/fitness iptal 17.11` | O günün randevusunu sitede iptal eder ve o günü atlar |
+| `/fitness dene` | Alınamayan randevuları beklemeden yeniden dener |
+
+Bitiş saati yazılmazsa 1,5 saat sayılır. Site en fazla 2 hafta sonrasına randevu verdiği için her randevu, tarihinden 2 hafta önce aynı saatte açılır; bot en geç 2 dakika içinde alır ve haber verir. Alamazsa bir kez haber verir, önce yarım saat sonra 6 saat arayla yeniden dener.
+
+Giriş için rezervasyon sitesindeki kullanıcı adın ve şifren `BOOKED_USERNAME` ve `BOOKED_PASSWORD` secret'larına girilir, ardından **Botu kur** iş akışı bir kez çalıştırılır. Bu ikisi girilmeden `/fitness` çalışmaz. Şifreyi değiştirirsen secret'ı güncelleyip **Botu kur**'u yeniden çalıştır.
 
 ## Ders programı
 
@@ -81,6 +100,7 @@ Repoda **Settings > Secrets and variables > Actions > New repository secret** il
 | `ZIMBRA_EMAIL` | Okul mail adresi (isteğe bağlı, mail ajanı için) |
 | `ZIMBRA_PASSWORD` | Okul maili şifresi (isteğe bağlı, mail ajanı için) |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare'de "Edit Cloudflare Workers" şablonuyla üretilen anahtar (isteğe bağlı, bot için) |
+| `BOOKED_USERNAME`, `BOOKED_PASSWORD` | Rezervasyon sitesindeki kullanıcı adın ve şifren (isteğe bağlı, `/fitness` için) |
 | `DERS_PROGRAMI` | Ders programın, yukarıdaki biçimde (isteğe bağlı: `/dersler`, sabah özeti ve akşam önizlemesi için) |
 | `DISPATCH_TOKEN` | GitHub'da üretilen, yalnızca bu repoda "Actions: Read and write" izni olan anahtar (isteğe bağlı ama önerilir: kontrollerin zamanında çalışması için) |
 
@@ -129,6 +149,7 @@ jarvis/
   menu.py, menu_ocr.py        Yemek menüsünü okur; listeyi resimden çıkarır
   menu_import.py              Mailden gelen listeyi menü dosyasına işler
 worker/                       Bot: komutlara anında cevap veren Cloudflare Worker
+worker/src/fitness.js         Fitness randevuları (rezervasyon sitesinin API'si)
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
 .github/workflows/morning.yml 08:00 zamanlayıcısı

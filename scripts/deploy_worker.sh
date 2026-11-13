@@ -43,7 +43,7 @@ npx --yes wrangler@4 deploy
 # Boş olanlar yüklenmez; böylece o özellik bot tarafında "henüz kurulmamış" olarak görünür.
 jq -n --arg TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN" --arg TELEGRAM_CHAT_ID "$TELEGRAM_CHAT_ID" --arg WEBHOOK_SECRET "$WEBHOOK_SECRET" \
   --arg GH_TOKEN "${DISPATCH_TOKEN:-}" --arg CANVAS_TOKEN "${CANVAS_TOKEN:-}" --arg CANVAS_BASE_URL "${CANVAS_BASE_URL:-}" \
-  --arg SCHEDULE "${DERS_PROGRAMI:-}" \
+  --arg SCHEDULE "${DERS_PROGRAMI:-}" --arg BOOKED_USERNAME "${BOOKED_USERNAME:-}" --arg BOOKED_PASSWORD "${BOOKED_PASSWORD:-}" \
   '$ARGS.named | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
 npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/secrets.json"
 rm -f "$RUNNER_TEMP/secrets.json"
@@ -62,6 +62,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"odevler","description":"Bekleyen ve geciken ödevler"},
   {"command":"notlar","description":"Son girilen notlar"},
   {"command":"dersler","description":"Bugünün dersleri"},
+  {"command":"fitness","description":"Fitness randevusu: /fitness salı 13:00-14:30"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},
   {"command":"hatirlatmalar","description":"Bekleyen hatırlatmalar"},
