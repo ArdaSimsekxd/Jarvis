@@ -1,9 +1,12 @@
 // Jarvis botu: Telegram'dan gelen komutlara anında cevap verir, hatırlatmaları zamanında gönderir.
-import { HELP, esc, fmtDateTime, formatMenu, fmtDate, parseCommand, parseDay, parseReminder } from "./logic.js";
+import { HELP, dateKey, dueJobs, esc, fmtDateTime, formatMenu, fmtDate, parseCommand, parseDay, parseReminder } from "./logic.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
 const MAX_TEXT = 500;
+const WORKFLOWS = { canvas: "canvas.yml", morning: "morning.yml" };
+const MORNING_KEY = "sched:morning";   // sabah özetinin en son başlatıldığı gün
+const WARN_KEY = "sched:warn";         // anahtar uyarısının en son gönderildiği gün
 
 async function telegram(env, method, body) {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
@@ -30,6 +33,26 @@ async function fetchMenu(env) {
     return await res.json();
   } catch {
     return null;
+  }
+}
+
+// GitHub'daki bir iş akışını başlatır; HTTP durum kodunu döndürür (204 = başladı).
+async function dispatchWorkflow(env, job) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${WORKFLOWS[job]}/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GH_TOKEN}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "jarvis-worker",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: "main", inputs: job === "morning" ? { otomatik: "true" } : {} }),
+    });
+    return res.status;
+  } catch {
+    return 0;
   }
 }
 
@@ -120,13 +143,35 @@ export async function sendDueReminders(ctx) {
   return sent;
 }
 
-function context(env) {
+// Zamanı gelen işleri (Canvas/mail kontrolü, sabah özeti) GitHub'da başlatır.
+// GH_TOKEN girilmemişse hiçbir şey yapmaz; o durumda GitHub'ın kendi zamanlayıcısı çalışır.
+export async function runSchedule(ctx) {
+  if (!ctx.dispatch) return [];
+  const today = dateKey(ctx.now);
+  const started = [];
+  for (const job of dueJobs(ctx.now)) {
+    if (job === "morning" && (await ctx.kv.get(MORNING_KEY)) === today) continue;
+    const status = await ctx.dispatch(job);
+    if (status === 204) {
+      if (job === "morning") await ctx.kv.put(MORNING_KEY, today);
+      started.push(job);
+    } else if ([401, 403, 404].includes(status) && (await ctx.kv.get(WARN_KEY)) !== today) {
+      // Anahtar silinmiş ya da süresi dolmuş: günde bir kez haber ver.
+      await ctx.kv.put(WARN_KEY, today);
+      await ctx.send("⚠️ Canvas ve mail kontrolünü başlatamadım. GitHub'daki <code>DISPATCH_TOKEN</code> anahtarının süresi dolmuş olabilir; yenisini üretip aynı isimle kaydet, sonra <b>Botu kur</b> iş akışını çalıştır.");
+    }
+  }
+  return started;
+}
+
+function context(env, now = Date.now()) {
   return {
-    now: Date.now(),
+    now,
     chatId: env.TELEGRAM_CHAT_ID,
     kv: env.KV,
     send: sender(env),
     fetchMenu: () => fetchMenu(env),
+    dispatch: env.GH_TOKEN && env.GITHUB_REPO ? (job) => dispatchWorkflow(env, job) : null,
     id: () => crypto.randomUUID().slice(0, 8),
   };
 }
@@ -148,7 +193,8 @@ export default {
     return new Response("ok"); // hata olsa da 200: Telegram aynı mesajı tekrar tekrar yollamasın
   },
 
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(sendDueReminders(context(env)));
+  async scheduled(event, env, ctx) {
+    const c = context(env, event?.scheduledTime ?? Date.now());
+    ctx.waitUntil(Promise.all([sendDueReminders(c), runSchedule(c)]));
   },
 };

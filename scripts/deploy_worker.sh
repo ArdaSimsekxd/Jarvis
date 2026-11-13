@@ -38,8 +38,10 @@ WEBHOOK_SECRET=$(printf '%s' "jarvis-webhook-$TELEGRAM_BOT_TOKEN" | sha256sum | 
 echo "::add-mask::$WEBHOOK_SECRET"
 cd worker
 npx --yes wrangler@4 deploy
-jq -n --arg a "$TELEGRAM_BOT_TOKEN" --arg b "$TELEGRAM_CHAT_ID" --arg c "$WEBHOOK_SECRET" \
-  '{TELEGRAM_BOT_TOKEN:$a, TELEGRAM_CHAT_ID:$b, WEBHOOK_SECRET:$c}' > "$RUNNER_TEMP/secrets.json"
+# DISPATCH_TOKEN varsa bot zamanlayıcı olur: Canvas/mail kontrolünü ve sabah özetini kendisi başlatır.
+[ -n "${DISPATCH_TOKEN:-}" ] || echo "::notice::DISPATCH_TOKEN girilmemiş; zamanlama GitHub'ın kendi (gecikebilen) zamanlayıcısında kalıyor."
+jq -n --arg a "$TELEGRAM_BOT_TOKEN" --arg b "$TELEGRAM_CHAT_ID" --arg c "$WEBHOOK_SECRET" --arg d "${DISPATCH_TOKEN:-}" \
+  '{TELEGRAM_BOT_TOKEN:$a, TELEGRAM_CHAT_ID:$b, WEBHOOK_SECRET:$c} + (if $d != "" then {GH_TOKEN:$d} else {} end)' > "$RUNNER_TEMP/secrets.json"
 npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/secrets.json"
 rm -f "$RUNNER_TEMP/secrets.json"
 cd ..

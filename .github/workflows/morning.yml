@@ -2,11 +2,20 @@ name: Sabah özeti
 
 on:
   schedule:
-    - cron: "0 5 * * *"   # 05:00 UTC = 08:00 Türkiye saati (GitHub birkaç dakika geciktirebilir)
+    - cron: "0 5 * * *"   # yedek (05:00 UTC = 08:00 Türkiye). GitHub geciktirebiliyor; asıl tetikleyici bot (worker)
   workflow_dispatch:       # Actions sekmesinden elle çalıştırmak için
+    inputs:
+      otomatik:
+        description: "Günde yalnızca bir kez gönder (bot böyle çalıştırır; elle denerken boş bırak)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: morning-summary
+  cancel-in-progress: false
 
 jobs:
   summary:
@@ -17,10 +26,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # Bot ve GitHub'ın yedek zamanlayıcısı aynı gün ikisi de çalışabilir; özet yine de bir kez gider.
+      - name: Bugünün tarihi
+        id: day
+        run: echo "day=$(TZ=Europe/Istanbul date +%F)" >> "$GITHUB_OUTPUT"
+      - name: Bugün gönderildi mi?
+        id: mark
+        if: ${{ github.event_name == 'schedule' || inputs.otomatik }}
+        uses: actions/cache@v4
+        with:
+          path: .morning-sent
+          key: morning-sent-${{ steps.day.outputs.day }}
+
       - name: Özeti gönder
+        if: ${{ steps.mark.outputs.cache-hit != 'true' }}
         env:
           CANVAS_BASE_URL: ${{ vars.CANVAS_BASE_URL || 'https://canvas.agu.edu.tr' }}
           CANVAS_TOKEN: ${{ secrets.CANVAS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m jarvis.agents.morning_summary
+        run: |
+          python -m jarvis.agents.morning_summary
+          touch .morning-sent   # iş başarıyla biterse bugünün işareti olarak saklanır

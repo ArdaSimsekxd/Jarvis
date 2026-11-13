@@ -64,6 +64,7 @@ Repoda **Settings > Secrets and variables > Actions > New repository secret** il
 | `ZIMBRA_EMAIL` | Okul mail adresi (isteğe bağlı, mail ajanı için) |
 | `ZIMBRA_PASSWORD` | Okul maili şifresi (isteğe bağlı, mail ajanı için) |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare'de "Edit Cloudflare Workers" şablonuyla üretilen anahtar (isteğe bağlı, bot için) |
+| `DISPATCH_TOKEN` | GitHub'da üretilen, yalnızca bu repoda "Actions: Read and write" izni olan anahtar (isteğe bağlı ama önerilir: kontrollerin zamanında çalışması için) |
 
 Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen aynı sayfada **Variables** sekmesine `CANVAS_BASE_URL` ekle.
 
@@ -75,7 +76,8 @@ Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen
 
 ## Bilmen gerekenler
 
-- GitHub zamanlamayı yoğun saatlerde birkaç dakika geciktirebilir.
+- GitHub'ın kendi zamanlayıcısı güvenilir değil: 10 dakikalık bir işi saatlerce geciktirebiliyor. Bu yüzden `DISPATCH_TOKEN` girildiğinde Canvas/mail kontrolünü (10 dakikada bir) ve sabah özetini (08:00) bot başlatır. GitHub'ın zamanlayıcısı yedek olarak durur; sabah özeti ikisi birden çalışsa da günde bir kez gider.
+- `DISPATCH_TOKEN` şuradan üretilir: GitHub > Settings > Developer settings > Fine-grained tokens. Yalnızca bu repo seçilir, izin olarak yalnızca **Actions: Read and write** verilir. Süresi dolarsa bot Telegram'dan haber verir.
 - Repoda 60 gün hiç değişiklik olmazsa GitHub zamanlanmış görevi durdurur ve sana e-posta atar; Actions sekmesinden tek tıkla yeniden açılır.
 - Bot Cloudflare Workers'ta (ücretsiz plan) çalışır. `worker/` klasörü değişince **Botu kur** iş akışı onu kendiliğinden yeniden kurar ve Telegram'a bağlar.
 - Repo herkese açık olduğu için iş akışı kayıtlarını herkes görebilir. Kod bu yüzden kayıtlara mail konusu, adres ya da hesap bilgisi yazmaz.
