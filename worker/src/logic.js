@@ -336,8 +336,14 @@ export function formatGrades(courses, assignmentsByCourse) {
 }
 
 export const HELP = [
-  "🤖 <b>Jarvis komutları</b>",
+  "🤖 <b>Jarvis</b>",
   "",
+  "Bana normal cümleyle ya da sesli mesajla yazabilirsin:",
+  "<i>yarın 3'te dişçim var, bir saat önce hatırlat</i>",
+  "<i>bu hafta beni ne bekliyor?</i>",
+  "<i>salı günkü fitness'ı iptal et</i>",
+  "",
+  "<b>Komutlar</b>",
   "/odevler — bekleyen ve geciken ödevler",
   "/notlar — son girilen notlar",
   "/dersler — bugünün dersleri (ya da: <code>/dersler yarın</code>, <code>/dersler salı</code>)",

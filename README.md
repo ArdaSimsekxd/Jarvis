@@ -9,9 +9,23 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 | **Sabah özeti** | Her sabah 08:00 | Günün derslerini, gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
 | **Akşam önizlemesi** | Her akşam 21:00 | Bu gece ve yarın teslim edilecekleri, yarının derslerini ve yemek menüsünü tek mesajda toplar. Yarın için söylenecek bir şey yoksa mesaj atmaz |
 | **Fitness randevusu** | Randevu açılınca | Söylediğin gün ve saatler için okulun rezervasyon sitesinden fitness randevusu alır, sonucu haber verir |
-| **Bot** | Anında | Telegram'dan yazdığın komutlara cevap verir, kişisel hatırlatmaları zamanında gönderir |
+| **Bot** | Anında | Telegram'dan yazdığın komutlara, normal cümlelere ve sesli mesajlara cevap verir, kişisel hatırlatmaları zamanında gönderir |
 
 Özeti beklemeden görmek için: **Actions** sekmesi > **Sabah özeti** > **Run workflow**.
+
+## Konuşarak kullanmak
+
+Komut ezberlemek gerekmez; Jarvis'e normal cümleyle ya da sesli mesajla yazabilirsin:
+
+- "Yarın 3'te dişçim var, bir saat önce hatırlat"
+- "Bu hafta beni ne bekliyor?"
+- "Pazartesi ilk dersim kaçta?"
+- "Her salı 13:00-14:30 fitness'a yaz beni" ya da "Salı günkü fitness'ı iptal et"
+- "Dişçi hatırlatmasını sil"
+
+Nasıl çalışır: yapay zekâ yalnızca ne istediğini anlar ve bunu aşağıdaki komutlara çevirir; işi yine o komutlar yapar. Silme ve iptal gibi işlerden önce "evet" diye onayını ister. Sesli mesajda önce ne duyduğunu yazar. Ödev ve ders sorularına da genel sorulara da cevap verir, ama her yapay zekâ gibi yanılabilir; önemli bir tarih ya da not için `/odevler` ve `/notlar` komutlarının çıktısı esastır.
+
+Yapay zekâ Cloudflare Workers AI üzerinde, botla aynı yerde çalışır ve günlük ücretsiz kotayı kullanır (gece 03:00'te yenilenir). Kota dolarsa komutlar çalışmaya devam eder. Yazdıkların ve cevap için gereken bilgiler (ör. ders programın) işlenmek üzere Cloudflare'in modeline gider; başka bir şirkete gitmez. Kullanılan model `worker/wrangler.toml` içindeki `AI_MODEL` satırından değiştirilir.
 
 ## Komutlar
 
@@ -151,6 +165,7 @@ jarvis/
   menu_import.py              Mailden gelen listeyi menü dosyasına işler
 worker/                       Bot: komutlara anında cevap veren Cloudflare Worker
 worker/src/fitness.js         Fitness randevuları (rezervasyon sitesinin API'si)
+worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
 .github/workflows/morning.yml 08:00 zamanlayıcısı
