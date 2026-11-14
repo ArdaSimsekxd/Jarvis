@@ -1,9 +1,10 @@
-// Jarvis botu: Telegram'dan gelen komutlara anında cevap verir, hatırlatmaları zamanında gönderir.
+// Jarvis botu: Telegram'dan gelen komutlara ve normal cümlelere cevap verir, hatırlatmaları zamanında gönderir.
 import {
   HELP, dateKey, dueJobs, esc, firstWord, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
   parseCommand, parseDay, parseReminder, parseSchedule,
 } from "./logic.js";
 import { cmdFitness, runFitness } from "./fitness.js";
+import { MODEL, SPEECH_MODEL, converse } from "./brain.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
@@ -14,6 +15,9 @@ const NAMES_KEY = "cache:coursenames";  // ders kodu -> adının ilk kelimesi (C
 const NAMES_TTL = 24 * 60 * 60;
 const MAX_COURSES = 40;                // ücretsiz planda bir istekte en fazla 50 alt istek yapılabilir
 const WARN_KEY = "sched:warn";         // anahtar uyarısının en son gönderildiği gün
+const AI_TIMEOUT_MS = 20000;           // cevap, Telegram'a "tamam" dedikten sonraki 30 saniyeye sığmalı
+const MAX_VOICE_SECONDS = 120;
+const MAX_VOICE_BYTES = 2 * 1024 * 1024;
 
 async function telegram(env, method, body) {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
@@ -80,6 +84,43 @@ async function canvasData(ctx) {
       .then((list) => (Array.isArray(list) ? list : []))
       .catch(() => [])));   // tek bir derse erişilemese de diğerleri gösterilsin
   return { courses, assignments: new Map(courses.map((c, i) => [c.id, lists[i]])) };
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("zaman aşımı")), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Yapay zekâ (Cloudflare Workers AI). schema verilirse cevap o JSON kalıbına zorlanır.
+async function aiChat(env, messages, { schema, maxTokens = 500 } = {}) {
+  const out = await withTimeout(env.AI.run(env.AI_MODEL || MODEL, {
+    messages,
+    max_tokens: maxTokens,
+    temperature: 0.2,
+    ...(schema ? { response_format: { type: "json_schema", json_schema: schema } } : {}),
+  }), AI_TIMEOUT_MS);
+  return out?.response;
+}
+
+function toBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+// Telegram'daki ses kaydını indirip yazıya çevirir.
+async function transcribe(env, fileId) {
+  const api = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}`;
+  const meta = await (await fetch(`${api}/getFile?file_id=${encodeURIComponent(fileId)}`)).json();
+  const path = meta?.result?.file_path;
+  if (!path) throw new Error("ses dosyası bulunamadı");
+  const res = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${path}`);
+  if (!res.ok) throw new Error(`ses indirilemedi ${res.status}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length > MAX_VOICE_BYTES) throw new Error("ses çok büyük");
+  const out = await withTimeout(env.AI.run(SPEECH_MODEL, { audio: toBase64(bytes), language: "tr" }), AI_TIMEOUT_MS);
+  return String(out?.text ?? "").trim();
 }
 
 // Hatırlatma anahtarı zamana göre sıralanır: rem:<15 haneli ms>:<kimlik>
@@ -178,23 +219,53 @@ async function cmdSil(args, ctx) {
   return `🗑 Silindi: <b>${esc(fmtDateTime(r.at))}</b> ${esc(r.text)}`;
 }
 
+// Tek bir komutu çalıştırır, cevap metnini döndürür. Yapay zekâ da işlerini bu komutlarla yapar.
+async function runCommand(cmd, ctx) {
+  if (cmd.command === "yemek") return cmdYemek(cmd.args, ctx);
+  if (["odevler", "odev"].includes(cmd.command)) return cmdCanvas(ctx, formatPending);
+  if (["notlar", "not"].includes(cmd.command)) return cmdCanvas(ctx, formatGrades);
+  if (["dersler", "ders", "program"].includes(cmd.command)) return cmdDersler(cmd.args, ctx);
+  if (["fitness", "spor"].includes(cmd.command)) return cmdFitness(cmd.args, ctx);
+  if (cmd.command === "hatirlat") return cmdHatirlat(cmd.args, ctx);
+  if (cmd.command === "hatirlatmalar") return cmdListe(ctx);
+  if (cmd.command === "sil") return cmdSil(cmd.args, ctx);
+  if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
+  return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
+}
+
+// Sesli mesajı yazıya çevirir. Çevrilemezse kullanıcıya söylenecek sözü { error } olarak döndürür.
+async function hear(message, ctx) {
+  const voice = message.voice ?? message.audio;
+  if (!ctx.ai) return { error: "Sesli mesajları henüz anlayamıyorum. Komutlar için /yardim yaz." };
+  if ((voice.duration ?? 0) > MAX_VOICE_SECONDS || (voice.file_size ?? 0) > MAX_VOICE_BYTES) {
+    return { error: "Bu ses kaydı çok uzun. İki dakikadan kısa bir kayıt gönderir misin?" };
+  }
+  try {
+    const text = await ctx.ai.transcribe(voice.file_id);
+    return text ? { text } : { error: "Ses kaydında bir şey duyamadım. Tekrar dener misin?" };
+  } catch (err) {
+    console.error("ses çevrilemedi", err?.message);
+    return { error: "Ses kaydını yazıya çeviremedim. Birazdan tekrar dener misin ya da yazarak gönderir misin?" };
+  }
+}
+
 // Tek bir Telegram mesajını işler; cevabı ctx.send ile yollar.
 export async function handleMessage(message, ctx) {
   if (String(message?.chat?.id) !== String(ctx.chatId)) return; // sadece sahibine cevap ver
-  const cmd = parseCommand(message.text);
-  let reply;
-  if (!cmd) reply = "Komutları görmek için /yardim yaz.";
-  else if (cmd.command === "yemek") reply = await cmdYemek(cmd.args, ctx);
-  else if (["odevler", "odev"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatPending);
-  else if (["notlar", "not"].includes(cmd.command)) reply = await cmdCanvas(ctx, formatGrades);
-  else if (["dersler", "ders", "program"].includes(cmd.command)) reply = await cmdDersler(cmd.args, ctx);
-  else if (["fitness", "spor"].includes(cmd.command)) reply = await cmdFitness(cmd.args, ctx);
-  else if (cmd.command === "hatirlat") reply = await cmdHatirlat(cmd.args, ctx);
-  else if (cmd.command === "hatirlatmalar") reply = await cmdListe(ctx);
-  else if (cmd.command === "sil") reply = await cmdSil(cmd.args, ctx);
-  else if (["start", "yardim", "help"].includes(cmd.command)) reply = HELP;
-  else reply = "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
-  await ctx.send(reply);
+  let text = message.text;
+  if (!text && (message.voice || message.audio)) {
+    await ctx.typing?.();
+    const heard = await hear(message, ctx);
+    if (heard.error) return void await ctx.send(heard.error);
+    text = heard.text;
+    await ctx.send(`🎙 <i>${esc(text.slice(0, 500))}</i>`);   // ne duyduğunu göster: yanlış anlaşıldıysa hemen görülür
+  }
+  const cmd = parseCommand(text);
+  if (cmd) return void await ctx.send(await runCommand(cmd, ctx));
+  if (!ctx.ai || !String(text ?? "").trim()) return void await ctx.send("Komutları görmek için /yardim yaz.");
+  await ctx.typing?.();
+  const replies = await converse(text, { ...ctx, reminders: () => listReminders(ctx.kv) }, (c) => runCommand(c, ctx));
+  for (const reply of replies) await ctx.send(reply);
 }
 
 // Zamanı gelen hatırlatmaları gönderir. Gönderilemeyen silinmez, sonraki turda yeniden denenir.
@@ -238,6 +309,12 @@ function context(env, now = Date.now()) {
     chatId: env.TELEGRAM_CHAT_ID,
     kv: env.KV,
     send: sender(env),
+    typing: () => telegram(env, "sendChatAction", { chat_id: env.TELEGRAM_CHAT_ID, action: "typing" }).catch(() => false),
+    // Yapay zekâ bağlı değilse bot eskisi gibi yalnızca komutlarla çalışır.
+    ai: env.AI ? {
+      chat: (messages, options) => aiChat(env, messages, options),
+      transcribe: (fileId) => transcribe(env, fileId),
+    } : null,
     fetchMenu: () => fetchMenu(env),
     dispatch: env.GH_TOKEN && env.GITHUB_REPO ? (job) => dispatchWorkflow(env, job) : null,
     canvas: env.CANVAS_TOKEN && env.CANVAS_BASE_URL ? (path) => canvasGet(env, path) : null,
@@ -255,20 +332,22 @@ function context(env, now = Date.now()) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/telegram") return new Response("Jarvis", { status: 200 });
     // Telegram her isteğe kurulumda verdiğimiz gizli değeri ekler; yoksa istek Telegram'dan değildir.
     if (!env.WEBHOOK_SECRET || request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET) {
       return new Response("forbidden", { status: 403 });
     }
+    let update = null;
     try {
-      const update = await request.json();
-      if (update.message) await handleMessage(update.message, context(env));
-    } catch (err) {
-      console.error("update işlenemedi", err?.message);
+      update = await request.json();
+    } catch { /* bozuk istek: aşağıda yine "ok" denir */ }
+    // Cevap arka planda hazırlanır; Telegram'a hemen "ok" denir ki yapay zekâ düşünürken aynı mesajı yeniden yollamasın.
+    if (update?.message) {
+      ctx.waitUntil(handleMessage(update.message, context(env)).catch((err) => console.error("update işlenemedi", err?.message)));
     }
-    return new Response("ok"); // hata olsa da 200: Telegram aynı mesajı tekrar tekrar yollamasın
+    return new Response("ok");
   },
 
   async scheduled(event, env, ctx) {

@@ -142,7 +142,7 @@ test("yabancı sohbetlere cevap verilmez; bilinmeyen komut ve düz yazı yönlen
   await handleMessage(msg("/falan"), ctx);
   assert.match(ctx.sent.pop(), /bilmiyorum/);
   await handleMessage(msg("/yardim"), ctx);
-  assert.match(ctx.sent.pop(), /Jarvis komutları/);
+  assert.match(ctx.sent.pop(), /<b>Komutlar<\/b>[\s\S]*\/odevler/);
   await handleMessage(msg("/hatirlat dün 10:00 x"), ctx);
   assert.match(ctx.sent.pop(), /geçmişte/);
 });

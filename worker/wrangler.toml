@@ -9,6 +9,10 @@ workers_dev = true
 binding = "KV"
 id = "__KV_ID__"   # kurulum sırasında doldurulur
 
+# Yapay zekâ (Cloudflare Workers AI): normal cümleleri ve sesli mesajları anlamak için. Günde 10.000 "neuron" ücretsiz.
+[ai]
+binding = "AI"
+
 [triggers]
 crons = ["*/2 * * * *"]   # 2 dakikada bir: hatırlatmalar + GitHub'daki işlerin zamanlaması
 
@@ -17,3 +21,4 @@ GITHUB_REPO = "ArdaSimsekxd/Jarvis"   # bot, Canvas/mail kontrolünü ve sabah �
 MENU_URL = "https://raw.githubusercontent.com/ArdaSimsekxd/Jarvis/main/data/menu.json"
 BOOKED_URL = "https://booked.agu.edu.tr/Web"   # okulun rezervasyon sitesi; /fitness komutu resmi API'sini kullanır
 FITNESS_RESOURCE_ID = "3"                      # sitedeki FITNESS CENTER kaynağının numarası
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"   # botun düşünürken kullandığı model; değiştirmek için bu satır yeterli
