@@ -1,7 +1,7 @@
 // Jarvis botu: Telegram'dan gelen komutlara ve normal cümlelere cevap verir, hatırlatmaları zamanında gönderir.
 import {
-  HELP, dateKey, dueJobs, esc, firstWord, fmtDateTime, formatGrades, formatMenu, formatPending, formatSchedule, fmtDate,
-  parseCommand, parseDay, parseReminder, parseSchedule,
+  HELP, MAIL_KEY, dateKey, dueJobs, esc, firstWord, fmtDateTime, formatGrades, formatMails, formatMenu, formatPending,
+  formatSchedule, fmtDate, parseCommand, parseDay, parseReminder, parseSchedule,
 } from "./logic.js";
 import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, converse } from "./brain.js";
@@ -188,6 +188,15 @@ async function cmdDersler(args, ctx) {
   return formatSchedule(ctx.schedule, day, await courseNames(ctx)) ?? `📚 <b>${esc(fmtDate(day))}</b>\n\nBu gün ders yok.`;
 }
 
+// Son mailler. Bot mail kutusuna bağlanmaz; listeyi mail ajanı 10 dakikada bir günceller.
+async function cmdMailler(args, ctx) {
+  let mails = [];
+  try {
+    mails = JSON.parse(await ctx.kv.get(MAIL_KEY))?.mails ?? [];
+  } catch { /* bozuk kayıt: boş say */ }
+  return formatMails(mails, args);
+}
+
 async function cmdHatirlat(args, ctx) {
   const r = parseReminder(args, ctx.now);
   if (r.error === "past") return "Bu zaman geçmişte kalıyor. İleri bir zaman yazar mısın?";
@@ -226,6 +235,7 @@ async function runCommand(cmd, ctx) {
   if (["notlar", "not"].includes(cmd.command)) return cmdCanvas(ctx, formatGrades);
   if (["dersler", "ders", "program"].includes(cmd.command)) return cmdDersler(cmd.args, ctx);
   if (["fitness", "spor"].includes(cmd.command)) return cmdFitness(cmd.args, ctx);
+  if (["mailler", "mail", "posta"].includes(cmd.command)) return cmdMailler(cmd.args, ctx);
   if (cmd.command === "hatirlat") return cmdHatirlat(cmd.args, ctx);
   if (cmd.command === "hatirlatmalar") return cmdListe(ctx);
   if (cmd.command === "sil") return cmdSil(cmd.args, ctx);

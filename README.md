@@ -5,7 +5,7 @@ Küçük ajanlardan oluşan kişisel asistan. Bütün ajanlar Telegram'dan telef
 | Ajan | Ne zaman | Ne yapar |
 | --- | --- | --- |
 | **Canvas bildirimleri** | 10 dakikada bir | Yeni duyuru, ödev, teslim tarihi değişikliği, not, mesaj ve ders materyalini (dosya, sayfa, bağlantı) haber verir. Duyuruların tamamını gönderir (paragraflar, kalın yazı ve bağlantılarla). Yeni yüklenen dosyaların (PDF, slayt vb.) kendisini de gönderir; 45 MB'tan büyük ya da indirilemeyen dosyaların yalnızca bağlantısı gelir. Teslim etmediğin ödevler için teslime 24 saat ve 3 saat kala hatırlatır |
-| **Okul maili** | 10 dakikada bir | Okul mailine (Zimbra) gelen yeni mailleri gönderen, konu ve kısa önizlemeyle haber verir. Mailleri okunmuş işaretlemez. Canvas'ın duyuru, tartışma ve ödevler için attığı kopya mailleri atlar, çünkü onları Canvas bildirimi zaten gönderir |
+| **Okul maili** | 10 dakikada bir | Okul mailine (Zimbra) gelen yeni mailleri gönderen, konu ve kısa önizlemeyle haber verir. Mailleri okunmuş işaretlemez. Son 15 mailin kısa hâlini bota aktarır; böylece `/mailler` komutu ve "en son ne mail geldi?" sorusu çalışır. Canvas'ın duyuru, tartışma ve ödevler için attığı kopya mailleri atlar, çünkü onları Canvas bildirimi zaten gönderir |
 | **Sabah özeti** | Her sabah 08:00 | Günün derslerini, gecikmiş ödevleri, bugün ve önümüzdeki 7 günde teslim edilecekleri (teslim ettiklerin hariç), son 24 saatin duyurularını ve günün yemek menüsünü tek mesajda toplar |
 | **Akşam önizlemesi** | Her akşam 21:00 | Bu gece ve yarın teslim edilecekleri, yarının derslerini ve yemek menüsünü tek mesajda toplar. Yarın için söylenecek bir şey yoksa mesaj atmaz |
 | **Fitness randevusu** | Randevu açılınca | Söylediğin gün ve saatler için okulun rezervasyon sitesinden fitness randevusu alır, sonucu haber verir |
@@ -20,6 +20,7 @@ Komut ezberlemek gerekmez; Jarvis'e normal cümleyle ya da sesli mesajla yazabil
 - "Yarın 3'te dişçim var, bir saat önce hatırlat"
 - "Bu hafta beni ne bekliyor?"
 - "Pazartesi ilk dersim kaçta?"
+- "En son ne mail geldi?" ya da "Burs ile ilgili mail var mı?"
 - "Her salı 13:00-14:30 fitness'a yaz beni" ya da "Salı günkü fitness'ı iptal et"
 - "Dişçi hatırlatmasını sil"
 
@@ -33,6 +34,7 @@ Telegram'da Jarvis botuna yazılır:
 
 | Komut | Ne yapar |
 | --- | --- |
+| `/mailler` | Okul mailine gelen son mailler; `/mailler 1` en son maili tam metniyle, `/mailler burs` içinde "burs" geçenleri gösterir (liste 10 dakikada bir güncellenir) |
 | `/odevler` | Bekleyen ve geciken ödevler (Canvas'tan o an okunur) |
 | `/notlar` | Son girilen notlar ve derslerdeki güncel durum |
 | `/dersler` | Bugünün dersleri. `/dersler yarın`, `/dersler salı` da olur |
@@ -165,6 +167,7 @@ jarvis/
   menu_import.py              Mailden gelen listeyi menü dosyasına işler
 worker/                       Bot: komutlara anında cevap veren Cloudflare Worker
 worker/src/fitness.js         Fitness randevuları (rezervasyon sitesinin API'si)
+jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktarır
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)

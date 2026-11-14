@@ -14,6 +14,7 @@ from email.header import decode_header, make_header
 from email.utils import parseaddr
 from urllib.parse import urlparse
 
+from jarvis import recent_mail
 from jarvis.agents.canvas_notifier import esc, skip_for_quiet_hours, strip_html
 from jarvis.channels import telegram
 from jarvis.state import State
@@ -60,7 +61,7 @@ def own_text(text, is_html=False, keep_quote=False):
     return DISCLAIMER.sub("", text)
 
 
-def body_preview(msg):
+def body_preview(msg, limit=PREVIEW_CHARS):
     """Mailin yazı kısmından kısa bir önizleme çıkarır."""
     part = msg.get_body(preferencelist=("plain", "html")) if hasattr(msg, "get_body") else None
     if part is None:
@@ -71,8 +72,8 @@ def body_preview(msg):
         return ""
     is_html = part.get_content_type() == "text/html"
     # Yeni yazılan kısım boşsa (ör. sadece iletilen bir mail) alıntıyı da göster.
-    return (strip_html(own_text(text, is_html), PREVIEW_CHARS)
-            or strip_html(own_text(text, is_html, keep_quote=True), PREVIEW_CHARS))
+    return (strip_html(own_text(text, is_html), limit)
+            or strip_html(own_text(text, is_html, keep_quote=True), limit))
 
 
 # Canvas her duyuru, ödev ve tartışma için bir de mail atar; bunları Canvas ajanı zaten bildiriyor.
@@ -194,10 +195,12 @@ class Mailbox:
         uids = [int(u) for u in (data[0] or b"").split()] if typ == "OK" else []
         return sorted(u for u in uids if u > last_uid)  # "n:*" en az bir sonuç döndürür, süz
 
-    def max_uid(self):
+    def all_uids(self):
         typ, data = self.conn.uid("SEARCH", None, "ALL")
-        uids = [int(u) for u in (data[0] or b"").split()] if typ == "OK" else []
-        return max(uids) if uids else 0
+        return sorted(int(u) for u in (data[0] or b"").split()) if typ == "OK" else []
+
+    def max_uid(self):
+        return max(self.all_uids(), default=0)
 
     def fetch(self, uid):
         """Maili okunmuş işaretlemeden getirir. Çok büyükse sadece başlıkları alır."""
@@ -225,10 +228,25 @@ class Mailbox:
             pass
 
 
-def run(mailbox, send, state, on_message=None, canvas_host=""):
+def mail_record(uid, msg):
+    return recent_mail.record(uid, msg, decode, body_preview, attachment_names)
+
+
+def latest_records(mailbox, count):
+    """Gelen kutusundaki son mailleri botta saklanacak hâlleriyle döndürür."""
+    out = []
+    for uid in mailbox.all_uids()[-count:]:
+        msg = mailbox.fetch(uid)
+        if msg is not None:
+            out.append(mail_record(uid, msg))
+    return out
+
+
+def run(mailbox, send, state, on_message=None, canvas_host="", store=None):
     """Yeni mailleri bildirir. on_message(msg): her yeni mail için ek iş (ör. yemek menüsü).
 
     Canvas ajanının zaten bildirdiği Canvas mailleri (duyuru, tartışma, ödev) atlanır.
+    store verilirse görülen son mailler bota da aktarılır ("en son ne mail geldi?" sorusu için).
     """
     data = state.data
     first_run = "mail_last_uid" not in data or data.get("mail_uidvalidity") != mailbox.uidvalidity
@@ -237,18 +255,22 @@ def run(mailbox, send, state, on_message=None, canvas_host=""):
         data["mail_uidvalidity"] = mailbox.uidvalidity
         data["mail_last_uid"] = mailbox.max_uid()
         send("📧 Okul mailin bağlandı. Bundan sonra gelen yeni mailleri buraya yazacağım.")
+        share_with_bot(store, state, mailbox, [])
         state.save()
         return 0
 
     uids = mailbox.uids_after(data["mail_last_uid"])
     skipped = max(len(uids) - MAX_PER_RUN, 0)
     sent = duplicates = 0
+    records = []
     try:
         if skipped:
             send(f"📧 {len(uids)} yeni mail var; en yeni {MAX_PER_RUN} tanesini gösteriyorum.")
             data["mail_last_uid"] = uids[skipped - 1]
         for uid in uids[skipped:]:
             msg = mailbox.fetch(uid)
+            if msg is not None:
+                records.append(mail_record(uid, msg))   # Canvas kopyaları da "gelen mail"dir, bota aktarılır
             if msg is not None and canvas_duplicate(msg, canvas_host):
                 duplicates += 1
             elif msg is not None:
@@ -261,10 +283,23 @@ def run(mailbox, send, state, on_message=None, canvas_host=""):
                         print(f"Ek işlem hatası: {type(e).__name__}")
             data["mail_last_uid"] = uid
     finally:
+        share_with_bot(store, state, mailbox, records)
         state.save()
         if duplicates:
             print(f"{duplicates} Canvas maili atlandı (Canvas bildirimi olarak zaten gidiyor)")
     return sent
+
+
+def share_with_bot(store, state, mailbox, records):
+    """Son mailleri bota aktarır. Aktarım bozulsa da bildirimler etkilenmez; bir sonraki turda yeniden denenir."""
+    if store is None:
+        return
+    try:
+        if recent_mail.sync(store, state, records, lambda count: latest_records(mailbox, count)):
+            print("Son mailler bota aktarıldı")
+    except Exception as e:  # hesap kimliği ya da adres kayda düşmesin: yalnızca hatanın türü
+        state.data[recent_mail.READY_FLAG] = False   # bu turun mailleri eksik kalmasın: sonraki turda liste baştan kurulur
+        print(f"Son mailler bota aktarılamadı ({type(e).__name__}{' ' + str(e.code) if hasattr(e, 'code') else ''})")
 
 
 def main():
@@ -279,8 +314,9 @@ def main():
     menu_dir = os.environ.get("MENU_IMAGE_DIR")
     try:
         canvas_host = urlparse(os.environ.get("CANVAS_BASE_URL") or "").hostname or ""
+        token = os.environ.get("CLOUDFLARE_API_TOKEN")
         sent = run(mailbox, telegram.send, State("mail"), on_message=lambda m: save_menu_image(m, menu_dir),
-                   canvas_host=canvas_host)
+                   canvas_host=canvas_host, store=recent_mail.BotStore(token) if token else None)
         if os.environ.get("MENU_REIMPORT") == "true":
             # Elle tetikleme: gelen kutusundaki en son yemek listesini yeniden oku.
             msg = mailbox.latest_with("yemek", lambda m: menu_image(m) is not None)

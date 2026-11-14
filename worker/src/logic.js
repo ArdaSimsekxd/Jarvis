@@ -335,12 +335,59 @@ export function formatGrades(courses, assignmentsByCourse) {
   return parts.join("\n\n");
 }
 
+// Son mailler: mail ajanı (GitHub'da çalışır) gördüğü mailleri kısa hâlleriyle bu anahtara yazar.
+// Aynı ad Python tarafında da var: jarvis/recent_mail.py (KEY).
+export const MAIL_KEY = "mail:recent";
+const MAIL_LIST = 8;           // liste görünümünde gösterilen mail sayısı
+const MAIL_FULL = 2;           // en fazla bu kadar mail tam metniyle gösterilir
+const MAIL_PREVIEW = 160;
+const MAIL_MAX_CHARS = 3600;   // Telegram mesaj sınırının altında kal
+
+const cut = (text, n) => (text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`);
+
+// "/mailler" komutunun cevabı. args: boş (son mailler), sayı (son N mail) ya da aranan kelime.
+// Az sayıda mail gösteriliyorsa metinleri tam yazılır.
+export function formatMails(mails, args = "") {
+  const all = (Array.isArray(mails) ? mails : []).filter((m) => m && typeof m === "object").slice().reverse();   // yeniden eskiye
+  if (!all.length) return "📧 Henüz mail bilgisi yok. Mail ajanı bir sonraki kontrolünde (10 dakika içinde) son mailleri buraya aktarır.";
+  const query = String(args ?? "").trim();
+  const n = /^\d{1,2}$/.test(query) ? Math.max(+query, 1) : null;
+  let picked = all, title = "Son mailler";
+  if (n !== null) {
+    picked = all.slice(0, n);
+    title = n === 1 ? "Son mail" : `Son ${picked.length} mail`;
+  } else if (query) {
+    const want = plain(query);
+    picked = all.filter((m) => plain(`${m.from} ${m.subject} ${m.text}`).includes(want));
+    if (!picked.length) return `📧 Son ${all.length} mail içinde "${esc(query)}" geçen bir mail yok.`;
+    title = `"${esc(query)}" geçen mailler`;
+  } else {
+    picked = all.slice(0, MAIL_LIST);
+  }
+  const full = picked.length <= MAIL_FULL;
+  const blocks = picked.map((m, i) => {
+    const head = `${picked.length > 1 ? `${i + 1}. ` : ""}<b>${esc(m.from)}</b>${m.at ? ` · ${esc(fmtDateTime(m.at))}` : ""}`;
+    const lines = [head, esc(m.subject)];
+    const body = String(m.text ?? "");
+    if (body) lines.push(`<i>${esc(full ? body : cut(body, MAIL_PREVIEW))}</i>`);
+    if (m.files?.length) lines.push(`📎 ${esc(m.files.join(", "))}`);
+    return lines.join("\n");
+  });
+  let out = `📧 <b>${title}</b>`;
+  for (const block of blocks) {
+    if (out.length + block.length + 2 > MAIL_MAX_CHARS) break;
+    out += `\n\n${block}`;
+  }
+  return out;
+}
+
 export const HELP = [
   "🤖 <b>Jarvis</b>",
   "",
   "Bana normal cümleyle ya da sesli mesajla yazabilirsin:",
   "<i>yarın 3'te dişçim var, bir saat önce hatırlat</i>",
   "<i>bu hafta beni ne bekliyor?</i>",
+  "<i>en son ne mail geldi?</i>",
   "<i>salı günkü fitness'ı iptal et</i>",
   "",
   "<b>Komutlar</b>",
@@ -350,6 +397,8 @@ export const HELP = [
   "",
   "/fitness salı 13:00-14:30 — her salı fitness randevusu al (tek gün için: <code>/fitness 27.11 13:00-14:30</code>)",
   "/fitness — isteklerim ve alınan randevular (ayrıntı: <code>/fitness yardim</code>)",
+  "",
+  "/mailler — okul mailine gelen son mailler (ya da: <code>/mailler 1</code>, <code>/mailler burs</code>)",
   "",
   "/yemek — bugünün menüsü",
   "/yemek yarın — yarının menüsü (ya da: <code>cuma</code>, <code>17.11</code>)",
