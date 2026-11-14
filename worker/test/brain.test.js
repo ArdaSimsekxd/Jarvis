@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { handleMessage } from "../src/index.js";
 import { AI_DOWN, HISTORY_KEY, PENDING_KEY, PLAN_SCHEMA, parsePlan, plannerPrompt, toSteps } from "../src/brain.js";
 import { STATE_KEY } from "../src/fitness.js";
-import { trToMs } from "../src/logic.js";
+import { MAIL_KEY, formatMails, trToMs } from "../src/logic.js";
 
 const NOW = trToMs(2026, 11, 14, 11, 10);   // Cumartesi 14.11.2026 11:10
 
@@ -231,4 +231,52 @@ test("komutlar yapay zekâya sorulmaz; yabancı sohbet hiçbir şey tetiklemez",
   await handleMessage({ chat: { id: 7 }, text: "selam" }, ctx);
   assert.equal(ctx.asked.length, 0);
   assert.equal(ctx.sent.length, 1);
+});
+
+const MAILS = [
+  { uid: 1, from: "Öğrenci İşleri", subject: "Burs <başvuruları>", at: trToMs(2026, 11, 12, 9, 30), text: "Burs başvuruları 20 Kasım'a kadar. ".repeat(12).trim(), files: ["form.pdf"] },
+  { uid: 2, from: "Ahmet Hoca", subject: "Yarın ders yok", at: trToMs(2026, 11, 13, 16, 5), text: "Yarınki EE452 dersi iptal edildi.", files: [] },
+  { uid: 3, from: "Kütüphane", subject: "(konusuz)", at: null, text: "", files: [] },
+];
+
+test("mail listesi: son mailler, sayı, arama ve boş depo", () => {
+  const list = formatMails(MAILS);
+  assert.match(list, /^📧 <b>Son mailler<\/b>\n\n1\. <b>Kütüphane<\/b>\n\(konusuz\)\n\n2\. <b>Ahmet Hoca<\/b> · Cuma 13\.11 16:05\nYarın ders yok/);
+  assert.match(list, /3\. <b>Öğrenci İşleri<\/b> · Perşembe 12\.11 09:30\nBurs &lt;başvuruları&gt;\n<i>Burs başvuruları[^<]{100,160}…<\/i>\n📎 form\.pdf$/);
+
+  const last = formatMails(MAILS, "2");
+  assert.match(last, /^📧 <b>Son 2 mail<\/b>/);
+  assert.doesNotMatch(last, /Öğrenci/);
+  assert.match(formatMails(MAILS, "1"), /^📧 <b>Son mail<\/b>\n\n<b>Kütüphane<\/b>\n\(konusuz\)$/);
+
+  const found = formatMails(MAILS, "BURS");
+  assert.match(found, /"BURS" geçen mailler/);
+  assert.equal(found.split("Burs başvuruları 20").length - 1, 12);       // tek mail: metnin tamamı
+  assert.match(formatMails(MAILS, "ee452"), /Ahmet Hoca/);                // metnin içinde de arar
+  assert.match(formatMails(MAILS, "<yok>"), /Son 3 mail içinde "&lt;yok&gt;" geçen bir mail yok/);
+
+  assert.match(formatMails([]), /Henüz mail bilgisi yok/);
+  assert.match(formatMails(null), /Henüz mail bilgisi yok/);
+  const many = Array.from({ length: 15 }, (_, i) => ({ uid: i, from: "A", subject: `Konu ${i}`, at: null, text: "x".repeat(1500), files: [] }));
+  assert.equal((formatMails(many).match(/<b>A<\/b>/g) ?? []).length, 8);
+  assert.ok(formatMails(many, "15").length <= 4000);
+});
+
+test("mailler normal cümleyle sorulur", async () => {
+  assert.deepEqual(toSteps([{ ad: "mailler" }, { ad: "mailler", sayi: "1" }, { ad: "mailler", sayi: "99" }, { ad: "mailler", metin: " burs " }], NOW)
+    .map((s) => [s.command, s.args, s.read]), [["mailler", "", true], ["mailler", "1", true], ["mailler", "15", true], ["mailler", "burs", true]]);
+
+  const ctx = fakeCtx([plan([{ ad: "mailler", sayi: "1" }], { yorum: "evet" }), "En son Kütüphane'den konusuz bir mail gelmiş."]);
+  await ctx.kv.put(MAIL_KEY, JSON.stringify({ mails: MAILS }));
+  await handleMessage(msg("En son mail olarak bana ne geldi?"), ctx);
+  assert.deepEqual(ctx.sent, ["En son Kütüphane'den konusuz bir mail gelmiş."]);
+  assert.match(ctx.asked[1].messages[1].content, /Veriler:\n📧 Son mail\n\nKütüphane\n\(konusuz\)/);
+  assert.deepEqual(JSON.parse(ctx.kv.values.get(HISTORY_KEY)).map((h) => h.a), ["(mailler bilgisi gösterildi)"]);   // mail içeriği hafızaya girmez
+
+  await handleMessage(msg("/mailler ahmet"), ctx);
+  assert.match(ctx.sent.pop(), /<b>Ahmet Hoca<\/b> · Cuma 13\.11 16:05\nYarın ders yok\n<i>Yarınki EE452 dersi iptal edildi\.<\/i>/);
+
+  const empty = fakeCtx([]);
+  await handleMessage(msg("/mail"), empty);
+  assert.match(empty.sent.pop(), /Henüz mail bilgisi yok/);
 });

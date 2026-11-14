@@ -1,10 +1,15 @@
 """Mail ajanı testi (sahte gelen kutusu). Çalıştırma: python -m unittest discover tests"""
 import email
 import email.policy
+import io
+import json
 import tempfile
 import unittest
+import urllib.error
 from email.message import EmailMessage
+from unittest import mock
 
+from jarvis import recent_mail
 from jarvis import state as state_mod
 from jarvis.agents import mail_notifier as mn
 
@@ -34,7 +39,29 @@ class FakeMailbox:
         return sorted(u for u in self.mails if u > last)
 
     def fetch(self, uid):
+        self.fetched = getattr(self, "fetched", 0) + 1
         return self.mails[uid]
+
+    def all_uids(self):
+        return sorted(self.mails)
+
+
+class FakeStore:
+    """Botun deposu (Cloudflare KV) yerine."""
+
+    def __init__(self):
+        self.values = {}
+        self.broken = False
+
+    def get(self, key):
+        if self.broken:
+            raise OSError("ulaşılamadı")
+        return self.values.get(key)
+
+    def put(self, key, text):
+        if self.broken:
+            raise OSError("ulaşılamadı")
+        self.values[key] = text
 
 
 class MailNotifierTest(unittest.TestCase):
@@ -171,6 +198,107 @@ class MailNotifierTest(unittest.TestCase):
         sent = self.run_once(box)
         self.assertEqual(len(sent), 1)
         self.assertIn("bağlandı", sent[0])
+
+
+class RecentMailTest(unittest.TestCase):
+    """Son maillerin bota aktarılması."""
+
+    def setUp(self):
+        state_mod.STATE_DIR = tempfile.mkdtemp()
+
+    def run_once(self, box, store):
+        sent = []
+        mn.run(box, sent.append, state_mod.State("mail"), store=store)
+        return sent
+
+    def stored(self, store):
+        return json.loads(store.values[recent_mail.KEY])["mails"]
+
+    def test_record(self):
+        msg = make("Öğrenci İşleri <ogrenci@agu.edu.tr>", "Burs <duyurusu>", "Merhaba,\n\n" + "çok uzun " * 400,
+                   attachments=["a.pdf"])
+        msg["Date"] = "Fri, 13 Nov 2026 16:05:00 +0300"
+        rec = mn.mail_record(9, email.message_from_bytes(msg.as_bytes(), policy=email.policy.default))
+        self.assertEqual((rec["uid"], rec["from"], rec["subject"], rec["files"]), (9, "Öğrenci İşleri", "Burs <duyurusu>", ["a.pdf"]))
+        self.assertEqual(rec["at"], 1794575100000)
+        self.assertTrue(rec["text"].startswith("Merhaba, çok uzun"))
+        self.assertLessEqual(len(rec["text"]), recent_mail.TEXT_CHARS + 1)
+        self.assertIsNone(mn.mail_record(1, make("x@agu.edu.tr", ""))["at"])       # tarihi olmayan mail
+        self.assertEqual(mn.mail_record(1, make("x@agu.edu.tr", ""))["subject"], "(konusuz)")
+
+    def test_first_sync_loads_latest_then_only_new_mails_are_added(self):
+        box = FakeMailbox({uid: make("a@agu.edu.tr", f"Mail {uid}", "içerik") for uid in range(1, 21)})
+        store = FakeStore()
+        self.run_once(box, store)                         # ilk bağlantı: son 15 mail baştan yüklenir
+        self.assertEqual([m["uid"] for m in self.stored(store)], list(range(6, 21)))
+
+        box.fetched = 0
+        self.assertEqual(self.run_once(box, store), [])   # yeni mail yok: depoya da mail kutusuna da dokunulmaz
+        self.assertEqual(box.fetched, 0)
+
+        box.mails[21] = make("Hoca <hoca@agu.edu.tr>", "Yarın ders yok", "Ders iptal.")
+        box.mails[22] = make("notifications@instructure.com", "Duyuru",
+                             "Yeni duyuru\nhttps://canvas.agu.edu.tr/courses/3/announcements/9\nhttps://canvas.agu.edu.tr/profile/communication")
+        sent = self.run_once(box, store)
+        self.assertEqual(len(sent), 1)                    # Canvas kopyası bildirilmez ...
+        mails = self.stored(store)
+        self.assertEqual([m["uid"] for m in mails], list(range(8, 23)))   # ... ama gelen mail olarak listeye girer
+        self.assertEqual((mails[-2]["from"], mails[-2]["subject"], mails[-2]["text"]), ("Hoca", "Yarın ders yok", "Ders iptal."))
+        self.assertEqual(box.fetched, 2)                  # eski mailler yeniden indirilmedi
+
+    def test_failed_sync_does_not_break_notifications_and_is_repaired(self):
+        box = FakeMailbox({1: make("a@agu.edu.tr", "Eski")})
+        store = FakeStore()
+        self.run_once(box, store)
+        store.broken = True
+        box.mails[2] = make("b@agu.edu.tr", "Kaçan mail")
+        box.fetched = 0
+        with mock.patch("builtins.print") as printed:
+            sent = self.run_once(box, store)
+        self.assertEqual(len(sent), 1)                    # bildirim yine gitti
+        self.assertEqual(box.fetched, 1)                  # depo bozukken mail kutusu boşuna taranmadı
+        logged = " ".join(str(c) for c in printed.call_args_list)
+        self.assertIn("aktarılamadı (OSError)", logged)
+        self.assertNotIn("Kaçan", logged)
+
+        store.broken = False
+        self.assertEqual(self.run_once(box, store), [])   # yeni mail yok ama liste onarılır
+        self.assertEqual([m["subject"] for m in self.stored(store)], ["Eski", "Kaçan mail"])
+
+    def test_store_is_optional_and_merge_keeps_one_copy(self):
+        box = FakeMailbox({1: make("a@agu.edu.tr", "Eski")})
+        self.run_once(box, None)                          # Cloudflare anahtarı yoksa eskisi gibi çalışır
+        merged = recent_mail.merge([{"uid": 1, "subject": "a"}, "bozuk", {"uid": 2, "subject": "b"}], [{"uid": 2, "subject": "yeni"}])
+        self.assertEqual(merged, [{"uid": 1, "subject": "a"}, {"uid": 2, "subject": "yeni"}])
+
+
+class BotStoreTest(unittest.TestCase):
+    def test_reads_and_writes_through_the_cloudflare_api(self):
+        calls = []
+
+        def urlopen(req, timeout=None):
+            calls.append((req.get_method(), req.full_url, req.data, req.get_header("Authorization")))
+            url = req.full_url
+            if url.endswith("/accounts"):
+                body = b'{"result":[{"id":"ACC"}]}'
+            elif "namespaces?" in url:
+                body = b'{"result":[{"id":"N0","title":"baska"},{"id":"N1","title":"jarvis"}]}'
+            elif req.get_method() == "GET" and url.endswith("/values/yok"):
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b"{}"))
+            else:
+                body = "değer".encode()
+            return mock.MagicMock(__enter__=lambda s: s, __exit__=lambda *a: False, read=lambda: body)
+
+        store = recent_mail.BotStore("tok")
+        with mock.patch("urllib.request.urlopen", urlopen):
+            self.assertEqual(store.get("mail:recent"), "değer")
+            self.assertIsNone(store.get("yok"))
+            store.put("mail:recent", "yeni değer")
+        self.assertEqual(len(calls), 5)                   # hesap ve depo yalnızca bir kez aranır
+        self.assertTrue(all(c[3] == "Bearer tok" for c in calls))
+        self.assertEqual(calls[2][1], "https://api.cloudflare.com/client/v4/accounts/ACC/storage/kv/namespaces/N1/values/mail%3Arecent")
+        self.assertEqual(calls[4][0], "PUT")
+        self.assertEqual(calls[4][2], "yeni değer".encode())
 
 
 if __name__ == "__main__":

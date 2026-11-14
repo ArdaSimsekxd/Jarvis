@@ -63,6 +63,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"notlar","description":"Son girilen notlar"},
   {"command":"dersler","description":"Bugünün dersleri"},
   {"command":"fitness","description":"Fitness randevusu: /fitness salı 13:00-14:30"},
+  {"command":"mailler","description":"Okul mailine gelen son mailler"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},
   {"command":"hatirlatmalar","description":"Bekleyen hatırlatmalar"},
