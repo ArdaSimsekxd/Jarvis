@@ -7,6 +7,7 @@ import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
+import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
@@ -317,6 +318,9 @@ async function runCommand(cmd, ctx) {
   if (["not", "kaydet"].includes(cmd.command)) return cmdNot(cmd.args, ctx);
   if (["hafiza", "hatiralar"].includes(cmd.command)) return cmdHafiza(cmd.args, ctx);
   if (["tarihler", "tarih"].includes(cmd.command)) return cmdTarihler(cmd.args, ctx);
+  if (["harcama", "harca", "gider"].includes(cmd.command)) return cmdHarcama(cmd.args, ctx);
+  if (["harcamalar", "giderler"].includes(cmd.command)) return cmdHarcamalar(cmd.args, ctx);
+  if (["butce", "bütçe"].includes(cmd.command)) return cmdButce(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -374,10 +378,13 @@ async function handlePhoto(message, ctx) {
   }
   const lines = [`📸 Hafızaya kaydettim (<b>#${note.id}</b>)${note.desc ? `: ${esc(note.desc)}` : ""}`];
   if (ctx.ai && !seen) lines.push("İçini okuyamadım; sonra kolay bulabilmem için fotoğrafın altına kısa bir açıklama yazman işe yarar.");
+  const receipt = seen ? await recordReceipt(ctx, seen, note.id).catch((err) => { console.error("fiş kaydedilemedi", err?.message); return null; }) : null;
+  if (receipt) lines.push("", receipt);
   await ctx.send(lines.join("\n"));
   if (caption && ctx.ai) {
-    const context = noteData(note).split("\n").slice(1).join("\n");
-    await deliver(ctx, await converse(caption, { ...ctx, reminders: () => listReminders(ctx.kv) }, (c) => runCommand(c, ctx), { context, quiet: true }));
+    const context = noteData(note).split("\n").slice(1).join("\n") + (receipt ? "\n(Bu fiş harcama olarak zaten kaydedildi.)" : "");
+    await deliver(ctx, await converse(caption, { ...ctx, reminders: () => listReminders(ctx.kv) }, (c) => runCommand(c, ctx),
+      { context, quiet: true, skip: receipt ? ["harcama_ekle"] : [] }));
   }
 }
 
@@ -506,6 +513,7 @@ export default {
       runSchedule(c),
       runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
       scanDates(c).catch((err) => console.error("tarihler okunamadı", err?.message)),
+      monthlyReport(c).catch((err) => console.error("harcama özeti gönderilemedi", err?.message)),
     ]));
   },
 };
