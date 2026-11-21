@@ -14,6 +14,22 @@ const MAX_LATE_MS = 20 * 60000;     // bot o saatte çalışamadıysa en fazla b
 
 const two = (n) => String(n).padStart(2, "0");
 
+// Servisin cevabında bu sözler varsa arama yapılmamış demektir.
+export const CALL_FAILED = /(error|not found|not authori[sz]ed|not activ|disabled|invalid|denied|blocked|wrong|limit|forbidden|banned|not allowed)/i;
+
+// Servisin (HTML) cevabını kısa düz yazıya çevirir
+export function serviceText(html) {
+  return String(html ?? "").slice(0, 5000).replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ").trim().slice(0, 400);
+}
+
+// ctx.call eskiden true/false döndürüyordu; ikisini de kabul et
+async function ring(ctx, user, text) {
+  const r = await ctx.call(user, text);
+  return typeof r === "object" && r !== null ? r : { ok: Boolean(r), info: "" };
+}
+
 export async function loadAlarm(kv) {
   try {
     const data = JSON.parse(await kv.get(ALARM_KEY));
@@ -56,7 +72,7 @@ export function wakeText(time) {
 function setupText(user) {
   const lines = [
     "📞 Seni aramam için bir kere şunu yapman lazım:",
-    `1. <a href="${CALLMEBOT_START}">CallMeBot</a> botunu aç ve <b>Başlat</b> (Start) düğmesine bas. Bu servis aramayı benim adıma yapıyor.`,
+    `1. <a href="${CALLMEBOT_START}">CallMeBot</a> botunu aç ve <b>/start</b> yaz. Bu servis aramayı benim adıma yapıyor. Gelen cevapta kullanıcı adın (${esc(user ?? "?")}) görünmeli; "not found" yazıyorsa önce Telegram'da kullanıcı adı aç, sonra yeniden /start yaz.`,
     "2. Telegram'da Ayarlar > Gizlilik ve Güvenlik > Aramalar bölümü <b>Herkes</b> olmalı (ya da CallMeBot'u istisna olarak ekle).",
     "3. <code>/alarm test</code> yaz, hemen arayayım.",
   ];
@@ -89,10 +105,11 @@ export async function cmdAlarm(args, ctx) {
   }
   if (s === "test" || s === "dene") {
     if (!a.user) return setupText(a.user);
-    const ok = await ctx.call(a.user, "Merhaba, ben Jarvis. Bu bir deneme araması. Sabah seni böyle arayacağım.");
-    return ok
-      ? "📞 Arıyorum… Birkaç saniye içinde Telegram'dan arama gelmeli (sırada başka arama varsa biraz gecikebilir). Gelmezse:\n\n" + setupText(a.user)
-      : `📞 Arama servisine ulaşamadım ya da arama reddedildi.\n\n${setupText(a.user)}`;
+    const r = await ring(ctx, a.user, "Merhaba, ben Jarvis. Bu bir deneme araması. Sabah seni böyle arayacağım.");
+    const said = r.info ? `\n\nServisin cevabı (${esc(a.user)} için):\n<i>${esc(r.info)}</i>` : "";
+    return r.ok
+      ? `📞 Arıyorum… Birkaç saniye içinde Telegram'dan arama gelmeli (sırada başka arama varsa biraz gecikebilir).${said}\n\nGelmezse:\n${setupText(a.user)}`
+      : `📞 Arama yapılamadı.${said}\n\n${setupText(a.user)}`;
   }
 
   let mode = "her", date = null, rest = s;
@@ -150,7 +167,8 @@ export async function alarmTick(ctx) {
     }
     let calls = run.calls;
     if (a.user && calls < MAX_CALLS && elapsed >= calls * CALL_EVERY_MS) {
-      if (await ctx.call(a.user, wakeText(run.time))) calls += 1;
+      await ring(ctx, a.user, wakeText(run.time));
+      calls += 1;   // başarısız deneme de sayılır: servis sorunluysa her turda aramaya kalkmasın
     }
     await ctx.send(`⏰ <b>Günaydın!</b> Saat ${esc(run.time)} alarmı. Uyandıysan bir şey yaz, susayım.`);
     await saveAlarm(ctx.kv, { ...a, run: { ...run, calls, msgs: (run.msgs ?? 0) + 1 } });
@@ -159,9 +177,9 @@ export async function alarmTick(ctx) {
 
   const due = dueToday(a, ctx.now);
   if (due === null || ctx.now < due || ctx.now > due + MAX_LATE_MS || (run?.day === today && run?.time === a.time)) return null;
-  const called = a.user ? await ctx.call(a.user, wakeText(a.time)) : false;
+  if (a.user) await ring(ctx, a.user, wakeText(a.time));
   await ctx.send(`⏰ <b>Günaydın!</b> Saat ${esc(a.time)}. Kalkma vakti.${a.user ? "" : "\n(Seni arayamadım: Telegram kullanıcı adın yok.)"}\nUyandıysan bir şey yaz, susayım.`);
-  const next = { ...a, run: { day: today, at: due, time: a.time, calls: called ? 1 : 0, msgs: 1, done: false } };
+  const next = { ...a, run: { day: today, at: due, time: a.time, calls: a.user ? 1 : 0, msgs: 1, done: false } };
   if (a.mode === "tek") { next.time = null; next.mode = null; next.date = null; }
   await saveAlarm(ctx.kv, next);
   return "rang";
