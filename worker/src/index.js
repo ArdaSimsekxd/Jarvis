@@ -12,6 +12,7 @@ import { PC_FILE, cmdPc } from "./pc.js";
 import { cmdBul, cmdPanel, handlePanel, plainText } from "./panel.js";
 import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
+import { cmdEczane } from "./pharmacy.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -335,6 +336,7 @@ async function runCommand(cmd, ctx) {
   if (["deprem", "depremler"].includes(cmd.command)) return cmdDeprem(cmd.args, ctx);
   if (["kargo", "kargolar", "kargom"].includes(cmd.command)) return cmdKargo(cmd.args, ctx);
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
+  if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
