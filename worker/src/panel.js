@@ -5,6 +5,7 @@ import { CATEGORIES, loadBudget, loadMonth, monthKey } from "./expenses.js";
 import { loadMemory } from "./memory.js";
 import { loadState, wantedSlots } from "./fitness.js";
 import { PANEL_HTML } from "./panel_page.js";
+import { ICON_180, ICON_512 } from "./app_icons.js";
 
 export const PANEL_KEY = "panel:key";
 const DAY = 24 * 60 * 60 * 1000;
@@ -199,12 +200,18 @@ export async function cmdPanel(args, ctx) {
   if (!ctx.origin) return "Paneli şu an hazırlayamadım, biraz sonra yeniden dener misin?";
   const renew = ["yenile", "degistir", "sifirla"].includes(plain(args));
   const key = await panelKey(ctx.kv, { renew });
+  if (renew && ctx.pc) await ctx.pc.call("pushclear").catch(() => {});   // eski cihazlara bildirim gitmesin
   const link = `${ctx.origin}/panel#${key}`;
+  const login = ctx.pc ? await ctx.pc.call("lcode").catch(() => null) : null;
   return [
-    renew ? "🛡 Panel bağlantısını yeniledim. Eski bağlantı artık açılmaz." : "🛡 <b>Jarvis paneli</b>",
+    renew ? "🛡 Panel bağlantısını yeniledim. Eski bağlantı ve uygulamadaki eski girişler artık açılmaz." : "🛡 <b>Jarvis paneli</b>",
     `<a href="${esc(link)}">Paneli aç</a>`,
     "",
-    "Telefonda açınca tarayıcının menüsünden <b>Ana ekrana ekle</b> dersen uygulama gibi açılır.",
+    "📱 <b>iPhone'a uygulama olarak kurmak için:</b>",
+    "1. Bağlantıyı <b>Safari</b>'de aç (Telegram'ın içinde açılırsa sağ üstten \"Safari'de aç\").",
+    "2. Alttaki paylaş düğmesine (kare ve yukarı ok) dokun, <b>Ana Ekrana Ekle</b>'yi seç.",
+    "3. Ana ekrandaki Jarvis simgesini aç." + (login ? ` Kod sorarsa: <code>${login.code}</code> (15 dakika geçerli)` : ""),
+    "",
     "Bu bağlantı sana özel, kimseyle paylaşma. Paylaştıysan: <code>/panel yenile</code>",
   ].join("\n");
 }
@@ -220,9 +227,70 @@ async function authorized(request, kv) {
 }
 
 // /panel, /panel/api ve /panel/pc isteklerini karşılar. Bu yollardan biri değilse null.
+const MANIFEST = JSON.stringify({
+  name: "Jarvis", short_name: "Jarvis", id: "/panel", start_url: "/panel", scope: "/panel", display: "standalone",
+  background_color: "#03070d", theme_color: "#03070d", lang: "tr",
+  icons: [
+    { src: "/panel/icon-180.png", sizes: "180x180", type: "image/png" },
+    { src: "/panel/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+  ],
+});
+
+// Bildirimleri gösteren servis çalışanı (service worker). Uygulama kapalıyken de çalışır.
+export const SERVICE_WORKER = `self.addEventListener("install", function () { self.skipWaiting(); });
+self.addEventListener("activate", function (e) { e.waitUntil(self.clients.claim()); });
+self.addEventListener("push", function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Jarvis", {
+    body: d.body || "", icon: "/panel/icon-180.png", badge: "/panel/icon-180.png", data: { url: d.url || "/panel" },
+  }).then(function () {
+    return self.clients.matchAll({ type: "window" }).then(function (list) {
+      list.forEach(function (c) { c.postMessage({ tip: "yenile" }); });
+    });
+  }));
+});
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+    for (var i = 0; i < list.length; i++) { if ("focus" in list[i]) return list[i].focus(); }
+    return self.clients.openWindow((e.notification.data && e.notification.data.url) || "/panel");
+  }));
+});
+`;
+
+function png(b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+}
+
+// Bot cevapları Telegram'ın HTML'iyle yazılır; bildirimde düz yazı gerekir.
+export function plainText(html) {
+  return String(html ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export async function handlePanel(request, ctx, src) {
   const path = new URL(request.url).pathname;
-  if (path === "/panel" && request.method === "GET") {
+  if (path === "/panel/manifest.webmanifest") {
+    return new Response(MANIFEST, { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache" } });
+  }
+  if (path === "/panel/sw.js") {
+    return new Response(SERVICE_WORKER, {
+      headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache", "Service-Worker-Allowed": "/panel" },
+    });
+  }
+  if (path === "/panel/icon-180.png") return png(ICON_180);
+  if (path === "/panel/icon-512.png") return png(ICON_512);
+  if (path === "/panel/login" && request.method === "POST") {
+    if (!ctx.pc) return json({ error: "Giriş kodu bu kurulumda yok." }, 400);
+    const body = await request.json().catch(() => ({}));
+    const r = await ctx.pc.call("lcheck", { code: String(body.code ?? "").slice(0, 20) });
+    if (!r.ok) return json({ error: r.expired ? "Kodun süresi dolmuş. Telegram'da /panel yazıp yeni kodu gir." : "Kod yanlış. Telegram'da /panel yazınca gelen kodu gir." }, 403);
+    return json({ key: await panelKey(ctx.kv) });
+  }
+  if ((path === "/panel" || path === "/panel/") && request.method === "GET") {
     return new Response(PANEL_HTML, {
       headers: {
         "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex",
@@ -233,6 +301,32 @@ export async function handlePanel(request, ctx, src) {
   if (path === "/panel/api" && request.method === "GET") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
     return json(await buildPanel(ctx, src));
+  }
+  if (path === "/panel/chat" && request.method === "POST") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    const body = await request.json().catch(() => ({}));
+    const text = String(body.text ?? "").trim().slice(0, 1000);
+    if (!text) return json({ replies: [] });
+    try {
+      return json({ replies: await src.chat(text) });
+    } catch (err) {
+      console.error("uygulama sohbeti cevaplanamadı", err?.message);
+      return json({ replies: ["Şu an cevap veremedim, biraz sonra yeniden dener misin?"] });
+    }
+  }
+  if (path === "/panel/push" && (request.method === "POST" || request.method === "DELETE")) {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    if (!ctx.pc) return json({ error: "Bildirimler bu kurulumda yok." }, 400);
+    const body = await request.json().catch(() => ({}));
+    if (request.method === "DELETE") return json(await ctx.pc.call("pushunsub", { endpoint: String(body.endpoint ?? "") }));
+    const r = await ctx.pc.call("pushsub", { sub: body.sub });
+    if (r.ok) await ctx.pc.call("push", { title: "Jarvis", body: "Bildirimler açık. Hatırlatmalar ve önemli haberler buraya da gelecek." }).catch(() => {});
+    return json(r, r.ok ? 200 : 400);
+  }
+  if (path === "/panel/push-key" && request.method === "GET") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    if (!ctx.pc) return json({ error: "Bildirimler bu kurulumda yok." }, 400);
+    return json(await ctx.pc.call("vapid"));
   }
   if (path === "/panel/pc" && request.method === "POST") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
