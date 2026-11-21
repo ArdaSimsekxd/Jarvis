@@ -31,7 +31,7 @@ const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
   "harcama_ekle", "harcamalar", "harcama_sil", "butce",
-  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul",
+  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane",
 ];
 
 // Modelin cevabı bu kalıba zorlanır (JSON mode). Bütün alanlar metin: kalıp sade kalsın.
@@ -111,6 +111,7 @@ Yapabildiğin işlemler:
 - {"ad":"bilgisayar","metin":"iş"} kullanıcının Windows bilgisayarında bir iş yapar. metin tam olarak şunlardan biri: "durum" (açık mı, pil), "kilitle", "uyku", "kapat", "yeniden" (yeniden başlat), "iptal" (bekleyen kapatmayı durdurur), "ekran" (ekran görüntüsü gönderir), "ses 40" (0-100 arası), "ses ac", "ses kis", "ses kapat", "muzik oynat" (durdur ya da devam), "muzik sonraki", "muzik onceki", "ac spotify" (ac'tan sonra uygulamanın, sitenin adı ya da bağlantı), "dosyalar" (İndirilenler ve Masaüstündeki son dosyalar), "dosya 3" (listedeki 3. dosyayı gönderir), "bagla" (bilgisayarı ilk kez bağlamak için). Bir isteğin birden çok adımı varsa her biri için ayrı yaz.
 - {"ad":"deprem","metin":""} son depremler ve deprem uyarısı ayarları ("deprem mi oldu?", "az önce sallandı mı?"). Ayar için metin: "ekle İzmir" (bir şehri de takip et), "sil İzmir", "esik 4" (yakındaki depremler için en küçük büyüklük), "kapat", "ac".
 - {"ad":"kargo","metin":""} kargoları ve son durumlarını gösterir ("kargom nerede?"). Yeni kargo eklemek için metin takip numarası, varsa firma (yurtici, aras, ptt, trendyol, hepsijet) ve kısa bir ad: "yurtici 123456789012 kulaklık". Silmek için "sil 2".
+- {"ad":"nobetci_eczane","metin":""} Kayseri'de bu gece açık olan nöbetçi eczaneler ("açık eczane var mı?", "nöbetçi eczane nerede?"). Belli bir ilçe sorulduysa metin ilçe adı (ör. "talas"), bütün ilçeler için "hepsi"; yoksa boş (şehir merkezi).
 - {"ad":"telefonu_bul","metin":""} kullanıcının telefonunu (iPhone) birkaç dakika sesli bildirimle çaldırır ("telefonumu bulamıyorum", "telefonumu çaldır"). Durdurmak için metin "dur".
 
 Kurallar:
@@ -301,6 +302,8 @@ export function toSteps(actions, nowMs, message = "") {
       const args = (a.metin ?? "").replace(/\s+/g, " ").trim();
       if (/^sil\b/i.test(args)) steps.push({ type: "confirm", command: "kargo", args, label: `Kargoyu takipten çıkar (${args.slice(4)})` });
       else steps.push({ type: "private", label: "kargo", command: "kargo", args });
+    } else if (a.ad === "nobetci_eczane") {
+      steps.push({ type: "private", label: "eczane", command: "eczane", args: (a.metin ?? "").trim().split(/\s+/)[0].replace(/['’].*$/, "").replace(/[^\p{L}]/gu, "") });
     } else if (a.ad === "telefonu_bul") {
       steps.push({ type: "run", command: "bul", args: plain(a.metin ?? "") === "dur" ? "dur" : "" });
     } else if (a.ad === "butce") {
