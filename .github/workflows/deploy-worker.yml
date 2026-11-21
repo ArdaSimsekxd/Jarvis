@@ -31,6 +31,7 @@ jobs:
       BOOKED_USERNAME: ${{ secrets.BOOKED_USERNAME }} # isteğe bağlı: /fitness komutu için rezervasyon sitesi girişi
       BOOKED_PASSWORD: ${{ secrets.BOOKED_PASSWORD }}
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}   # isteğe bağlı: internette arama (/ara) için
+      TRACK17_KEY: ${{ secrets.TRACK17_KEY }}         # isteğe bağlı: kargo takibi (/kargo) için
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

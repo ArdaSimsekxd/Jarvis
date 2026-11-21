@@ -9,7 +9,9 @@ import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./mem
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
 import { PC_FILE, cmdPc } from "./pc.js";
-import { cmdPanel, handlePanel, plainText } from "./panel.js";
+import { cmdBul, cmdPanel, handlePanel, plainText } from "./panel.js";
+import { checkQuakes, cmdDeprem } from "./quake.js";
+import { checkCargo, cmdKargo } from "./cargo.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -330,6 +332,9 @@ async function runCommand(cmd, ctx) {
   if (["ozetle", "özetle", "oku"].includes(cmd.command)) return cmdOzetle(cmd.args, ctx);
   if (["pc", "bilgisayar"].includes(cmd.command)) return cmdPc(cmd.args, ctx);
   if (["panel"].includes(cmd.command)) return cmdPanel(cmd.args, ctx);
+  if (["deprem", "depremler"].includes(cmd.command)) return cmdDeprem(cmd.args, ctx);
+  if (["kargo", "kargolar", "kargom"].includes(cmd.command)) return cmdKargo(cmd.args, ctx);
+  if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -550,6 +555,8 @@ function context(env, now = Date.now(), origin = null) {
     // İnternette arama (Tavily). Anahtar yalnızca Cloudflare'deki gizli alanda durur.
     webKey: env.TAVILY_API_KEY || null,
     webFetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10000) }),
+    // Kargo takibi (17TRACK). Anahtar yalnızca Cloudflare'deki gizli alanda durur.
+    cargoKey: env.TRACK17_KEY || null,
     // Bilgisayar bağlantısı (Windows'taki Jarvis programı)
     pc: env.PC ? {
       call: (op, body) => pcCall(env, op, body),
@@ -620,6 +627,8 @@ export default {
       runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
       scanDates(c).catch((err) => console.error("tarihler okunamadı", err?.message)),
       monthlyReport(c).catch((err) => console.error("harcama özeti gönderilemedi", err?.message)),
+      checkQuakes(c).catch((err) => console.error("deprem kontrolü çalışmadı", err?.message)),
+      checkCargo(c).catch((err) => console.error("kargo kontrolü çalışmadı", err?.message)),
     ]).then(() => pushToApp(env, said)));
   },
 };
