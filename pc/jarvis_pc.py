@@ -24,7 +24,9 @@ from pathlib import Path
 
 # Telegram'dan gelen dosyada Jarvis bir sonraki satırı doldurur (tek kullanımlık eşleştirme kodu).
 PAIRING = ""
-VERSION = 1
+VERSION = 2
+# Cloudflare, Python'un varsayılan tanıtımıyla ("Python-urllib") gelen istekleri engelliyor (HTTP 403, hata 1010).
+USER_AGENT = f"JarvisPC/{VERSION} (Windows)"
 
 HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Jarvis"
 CONFIG = HOME / "config.json"
@@ -224,6 +226,7 @@ def upload(cfg, path, kind, caption=""):
     data = Path(path).read_bytes()
     req = urllib.request.Request(cfg["server"] + "/pc/upload", data=data, method="POST", headers={
         "Authorization": "Bearer " + cfg["token"],
+        "User-Agent": USER_AGENT,
         "Content-Type": "application/octet-stream",
         "X-Tur": kind,
         "X-Ad": urllib.parse.quote(Path(path).name),
@@ -373,7 +376,7 @@ def run_agent():
             return
         url = cfg["server"].replace("https://", "wss://", 1) + "/pc/connect"
         try:
-            with connect(url, additional_headers={"Authorization": "Bearer " + cfg["token"]},
+            with connect(url, additional_headers={"Authorization": "Bearer " + cfg["token"]}, user_agent_header=USER_AGENT,
                          open_timeout=20, close_timeout=5, ping_interval=None, max_size=2 ** 20) as ws:
                 log("Jarvis'e bağlandı")
                 backoff = 5
@@ -435,15 +438,17 @@ def run_agent():
 
 def post_json(url, body):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
             return json.loads(res.read().decode())
     except urllib.error.HTTPError as err:
+        body = err.read().decode(errors="replace")
         try:
-            return json.loads(err.read().decode())
+            return json.loads(body)
         except ValueError:
-            return {"error": f"Jarvis cevap vermedi (HTTP {err.code})."}
+            detail = re.sub(r"<[^>]+>|\s+", " ", body).strip()[:80]
+            return {"error": f"Jarvis cevap vermedi (HTTP {err.code}{': ' + detail if detail else ''})."}
 
 
 def pythonw():
