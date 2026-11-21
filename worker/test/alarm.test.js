@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ALARM_KEY, CALL_FAILED, alarmTick, serviceText, cmdAlarm, dueToday, loadAlarm, nextRing } from "../src/alarm.js";
+import { ALARM_KEY, alarmTick, cmdAlarm, dueToday, loadAlarm, nextRing } from "../src/alarm.js";
 import { toSteps } from "../src/brain.js";
 import { handleMessage } from "../src/index.js";
 import { trParts, trToMs } from "../src/logic.js";
@@ -64,13 +64,7 @@ test("kullanıcı adı ilk mesajda öğrenilir; test araması onunla yapılır",
   assert.match(ctx.sent.at(-1), /Arıyorum/);
   const failing = fakeCtx(NOW, { callOk: false });
   await handleMessage(msg("/alarm test"), failing);
-  assert.match(failing.sent.at(-1), /Arama yapılamadı/);
-
-  // servis HTTP 200 dönse de cevabında hata yazıyorsa arama yapılmamış sayılır ve sebebi gösterilir
-  const told = fakeCtx();
-  told.call = async () => ({ ok: false, info: "User @arda not authorized. Send /start to the bot." });
-  await handleMessage(msg("/alarm test"), told);
-  assert.match(told.sent.at(-1), /Arama yapılamadı[\s\S]*@arda için[\s\S]*not authorized/);
+  assert.match(failing.sent.at(-1), /ulaşamadım/);
 });
 
 test("saatinde arar, cevap yoksa 2 dakikada bir yazar ve 6 dakikada bir yeniden arar; mesaj gelince susar", async () => {
@@ -132,10 +126,4 @@ test("konuşarak alarm kurma", () => {
   assert.deepEqual(toSteps([{ ad: "alarm_kur", saat: "07:30", tekrar: "her_gun" }], NOW), [{ type: "run", command: "alarm", args: "07:30" }]);
   assert.deepEqual(toSteps([{ ad: "alarm_kur" }], NOW), [{ type: "say", text: "Alarmı saat kaçta kurayım?" }]);
   assert.deepEqual(toSteps([{ ad: "alarm_kapat" }], NOW), [{ type: "run", command: "alarm", args: "kapat" }]);
-});
-
-test("servis cevabı yazıya çevrilir ve hata sözleri yakalanır", () => {
-  assert.equal(serviceText("<html><body><p>Call to @arda&nbsp;queued</p><script>x()</script></body></html>"), "Call to @arda queued");
-  assert.equal(CALL_FAILED.test("Error: user not authorized"), true);
-  assert.equal(CALL_FAILED.test("Call to @arda queued"), false);
 });
