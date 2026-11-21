@@ -420,8 +420,6 @@ export const HELP = [
   "/hatirlat 20.11 18:00 kira",
   "/hatirlat 30 dk çay — ayrıca: <code>2 saat</code>, <code>3 gün</code>",
   "",
-  "/alarm 06:00 — her sabah Telegram'dan arayan alarm (ya da: <code>/alarm yarın 06:00</code>, <code>/alarm kapat</code>)",
-  "",
   "/hatirlatmalar — bekleyen hatırlatmalar",
   "/sil 2 — listedeki 2 numaralı hatırlatmayı sil",
 ].join("\n");

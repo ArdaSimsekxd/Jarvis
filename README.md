@@ -55,16 +55,6 @@ En fazla 300 not saklanır. Fotoğrafların kendisi Telegram'da kalır; botun ke
 
 Harcamalar botun kendi Cloudflare deposunda, her ay için tek bir kayıtta durur. Fişi okumak için fotoğraftaki yazı Cloudflare'in yapay zekâsına gider. Yapay zekâ tutarı yanlış okuyabilir; kayıt mesajındaki tutara bir göz at.
 
-## Arayan alarm
-
-`/alarm 06:00` yazınca Jarvis her sabah o saatte seni **Telegram'dan sesli arar** ve Türkçe "Günaydın, kalkma vakti" der. Sen bir mesaj yazana kadar 2 dakikada bir mesaj atar, cevap gelmezse 6 dakikada bir yeniden arar (en fazla 3 arama). Yarım saat sonra kendiliğinden susar.
-
-- `/alarm hafta içi 06:00` pazartesi-cuma, `/alarm yarın 06:30` tek sefer, `/alarm kapat` kapatır.
-- "Yarın 6'da beni uyandır" gibi yazman da yeter.
-- İlk kurulum: [CallMeBot](https://t.me/CallMeBot_txtbot) botunu açıp **Başlat**'a bas, Telegram'da Ayarlar > Gizlilik ve Güvenlik > Aramalar'ı **Herkes** yap, sonra `/alarm test` ile dene. Telegram'da bir kullanıcı adın olmalı.
-- Aramayı ücretsiz CallMeBot servisi yapar; servis kullanıcı adını ve okunacak cümleyi görür. Ortak bir servis olduğu için arama bazen biraz gecikebilir. Telefonundaki asıl alarmı yine de kurmaya devam et.
-- Bot 2 dakikada bir çalıştığı için çift dakikalar (06:00, 06:30) tam zamanında, tek dakikalar bir dakika geç çalar.
-
 ## Komutlar
 
 Telegram'da Jarvis botuna yazılır:
@@ -87,7 +77,6 @@ Telegram'da Jarvis botuna yazılır:
 | `/harcama 120 kahve` | Harcama kaydeder; `/harcama sil 5` siler |
 | `/harcamalar` | Bu ayın harcamaları, türlere göre toplam ve bütçe; `/harcamalar ekim`, `/harcamalar kafe` de olur |
 | `/butce 6000` | Aylık bütçeyi ayarlar; `/butce` durumu gösterir, `/butce sil` kaldırır |
-| `/alarm 06:00` | Her sabah o saatte Telegram'dan arayan alarm; `/alarm yarın 06:00`, `/alarm hafta içi 07:00`, `/alarm kapat`, `/alarm test` |
 | `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
 | `/yardim` | Komut listesi |
 
