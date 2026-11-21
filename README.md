@@ -23,10 +23,23 @@ Komut ezberlemek gerekmez; Jarvis'e normal cümleyle ya da sesli mesajla yazabil
 - "En son ne mail geldi?" ya da "Burs ile ilgili mail var mı?"
 - "Her salı 13:00-14:30 fitness'a yaz beni" ya da "Salı günkü fitness'ı iptal et"
 - "Dişçi hatırlatmasını sil"
+- "Ahmet'in doğum günü 3 Mart, kaydet" ve sonra "Ahmet'in doğum günü ne zamandı?"
 
 Nasıl çalışır: yapay zekâ yalnızca ne istediğini anlar ve bunu aşağıdaki komutlara çevirir; işi yine o komutlar yapar. Silme ve iptal gibi işlerden önce "evet" diye onayını ister. Sesli mesajda önce ne duyduğunu yazar. Ödev ve ders sorularına da genel sorulara da cevap verir, ama her yapay zekâ gibi yanılabilir; önemli bir tarih ya da not için `/odevler` ve `/notlar` komutlarının çıktısı esastır.
 
 Yapay zekâ Cloudflare Workers AI üzerinde, botla aynı yerde çalışır ve günlük ücretsiz kotayı kullanır (gece 03:00'te yenilenir). Kota dolarsa komutlar çalışmaya devam eder. Yazdıkların ve cevap için gereken bilgiler (ör. ders programın) işlenmek üzere Cloudflare'in modeline gider; başka bir şirkete gitmez. Kullanılan model `worker/wrangler.toml` içindeki `AI_MODEL` satırından değiştirilir.
+
+## Hafıza (ikinci beyin)
+
+Aklında tutmak istediğin her şeyi Jarvis'e bırakabilirsin, sonra normal cümleyle sorarsın:
+
+- **Not:** "Spor salonundaki dolabım 45 numara, kaydet" ya da `/not Kütüphane kartı numaram 2231`
+- **Bağlantı:** Yalnızca bir bağlantı gönderirsen sayfanın başlığıyla birlikte saklar.
+- **Fotoğraf:** Gönderdiğin her fotoğrafı saklar. Yapay zekâ fotoğrafta ne olduğunu ve üzerindeki yazıyı (fiş, afiş, tahta, belge) okur; böylece sonra "geçen hafta fotoğrafını attığım fişte toplam ne kadardı?" diye sorabilirsin, ilgili fotoğrafı da geri gönderir. Fotoğrafın altına bir soru yazarsan ("bu ne zaman?") hem kaydeder hem cevaplar.
+- **Sormak:** "Ahmet'in doğum günü ne zamandı?", "staj ile ilgili ne kaydetmiştim?"
+- **Silmek:** "Dolap notunu hafızadan sil" (önce onay ister) ya da `/hafiza sil 12`
+
+En fazla 300 not saklanır. Fotoğrafların kendisi Telegram'da kalır; botun kendi Cloudflare hesabında yalnızca yazıların ve fotoğrafın Telegram kimliği durur. Şifre gibi çok hassas bilgileri kaydetmeden önce bunu düşün: sorduğunda notların cevap için Cloudflare'in yapay zekâsına gider.
 
 ## Komutlar
 
@@ -45,6 +58,8 @@ Telegram'da Jarvis botuna yazılır:
 | `/hatirlat 30 dk çay` | Şu andan itibaren: `dk`, `saat`, `gün` |
 | `/hatirlatmalar` | Bekleyen hatırlatmalar |
 | `/sil 2` | Listedeki 2 numaralı hatırlatmayı siler |
+| `/not metin` | Metni hafızaya kaydeder |
+| `/hafiza` | Hafızaya son kaydedilenler; `/hafiza staj` içinde "staj" geçenleri, `/hafiza 12` 12 numaralı notu (fotoğrafsa fotoğrafıyla) gösterir, `/hafiza sil 12` siler |
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.
