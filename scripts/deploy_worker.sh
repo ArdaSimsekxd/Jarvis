@@ -46,6 +46,7 @@ npx --yes wrangler@4 deploy
 jq -n --arg TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN" --arg TELEGRAM_CHAT_ID "$TELEGRAM_CHAT_ID" --arg WEBHOOK_SECRET "$WEBHOOK_SECRET" \
   --arg GH_TOKEN "${DISPATCH_TOKEN:-}" --arg CANVAS_TOKEN "${CANVAS_TOKEN:-}" --arg CANVAS_BASE_URL "${CANVAS_BASE_URL:-}" \
   --arg SCHEDULE "${DERS_PROGRAMI:-}" --arg BOOKED_USERNAME "${BOOKED_USERNAME:-}" --arg BOOKED_PASSWORD "${BOOKED_PASSWORD:-}" \
+  --arg TAVILY_API_KEY "${TAVILY_API_KEY:-}" \
   '$ARGS.named | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
 npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/secrets.json"
 rm -f "$RUNNER_TEMP/secrets.json"
@@ -71,6 +72,8 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"harcama","description":"Harcama kaydet: /harcama 120 kahve"},
   {"command":"harcamalar","description":"Bu ayın harcamaları ve bütçe"},
   {"command":"butce","description":"Aylık bütçe: /butce 6000"},
+  {"command":"ara","description":"İnternette ara: /ara soru"},
+  {"command":"ozetle","description":"Bağlantıdaki sayfayı özetle"},
   {"command":"mailler","description":"Okul mailine gelen son mailler"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},

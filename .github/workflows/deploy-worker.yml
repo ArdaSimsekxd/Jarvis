@@ -30,6 +30,7 @@ jobs:
       DERS_PROGRAMI: ${{ secrets.DERS_PROGRAMI }}     # isteğe bağlı: /dersler komutu için
       BOOKED_USERNAME: ${{ secrets.BOOKED_USERNAME }} # isteğe bağlı: /fitness komutu için rezervasyon sitesi girişi
       BOOKED_PASSWORD: ${{ secrets.BOOKED_PASSWORD }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}   # isteğe bağlı: internette arama (/ara) için
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
