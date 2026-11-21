@@ -1,7 +1,7 @@
 // Mail ve Canvas duyurularındaki tarihler: yapay zekâ yeni gelenlerde ileri tarihli olayları (sınav, son başvuru,
 // etkinlik...) bulur; bot bunları hafızaya kaydeder ve 3 gün, 1 gün ve 2 saat önce hatırlatır.
 // Mail ve duyuru yazısı dışarıdan gelir: yalnızca veri olarak işlenir, modelden yalnızca olay adı ve tarih alınır.
-import { askJson, looseJson } from "./brain.js";
+import { askJson, looseJson } from "./ai.js";
 import { MAIL_KEY, WEEKDAYS, esc, fmtDateTime, isQuiet, trParts, trToMs } from "./logic.js";
 import { addNotes, loadMemory, makeNote, words } from "./memory.js";
 

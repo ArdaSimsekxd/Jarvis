@@ -24,6 +24,7 @@ Komut ezberlemek gerekmez; Jarvis'e normal cümleyle ya da sesli mesajla yazabil
 - "Her salı 13:00-14:30 fitness'a yaz beni" ya da "Salı günkü fitness'ı iptal et"
 - "Dişçi hatırlatmasını sil"
 - "Ahmet'in doğum günü 3 Mart, kaydet" ve sonra "Ahmet'in doğum günü ne zamandı?"
+- "Kahveye 120 TL verdim" ya da "Bu ay yemeğe ne kadar harcadım?"
 
 Nasıl çalışır: yapay zekâ yalnızca ne istediğini anlar ve bunu aşağıdaki komutlara çevirir; işi yine o komutlar yapar. Silme ve iptal gibi işlerden önce "evet" diye onayını ister. Sesli mesajda önce ne duyduğunu yazar. Ödev ve ders sorularına da genel sorulara da cevap verir, ama her yapay zekâ gibi yanılabilir; önemli bir tarih ya da not için `/odevler` ve `/notlar` komutlarının çıktısı esastır.
 
@@ -42,6 +43,17 @@ Aklında tutmak istediğin her şeyi Jarvis'e bırakabilirsin, sonra normal cüm
 **Mail ve duyurulardaki tarihler:** Yeni gelen okul maillerine ve Canvas duyurularına 10 dakikada bir bakar. İçlerinde ileri tarihli bir olay (sınav, son başvuru, etkinlik, toplantı) varsa onu hafızaya kaydeder, **3 gün, 1 gün ve 2 saat önce** hatırlatır ve sana "Mailde tarih buldum" diye haber verir. Saat yazmıyorsa hatırlatmalar o günlerin sabahı 09:00'da gelir; gece 00:00-07:00 arasına düşen hatırlatma önceki akşam 23:30'a alınır. Canvas ödevlerinin teslim tarihlerini almaz, onlar zaten ayrıca hatırlatılıyor. Yapay zekâ yanlış bir tarih bulduysa haber mesajındaki `/hafiza sil 12` komutu notu ve hatırlatmalarını birlikte siler. Yaklaşanları görmek için: `/tarihler`. Son 3 günden eski mail ve duyurulara bakmaz.
 
 En fazla 300 not saklanır. Fotoğrafların kendisi Telegram'da kalır; botun kendi Cloudflare hesabında yalnızca yazıların ve fotoğrafın Telegram kimliği durur. Şifre gibi çok hassas bilgileri kaydetmeden önce bunu düşün: sorduğunda notların cevap için Cloudflare'in yapay zekâsına gider.
+
+## Harcamalar ve bütçe
+
+- **Kaydetmek:** "Kahveye 120 TL verdim", "dün markete 450 lira gitti" ya da `/harcama 120 kahve`. Türü (yemek, kafe, market, ulaşım...) kendisi tahmin eder.
+- **Fiş:** Fişin fotoğrafını atman yeter. Yapay zekâ genel toplamı, işletmeyi ve türü okuyup harcama olarak kaydeder; fotoğraf da hafızada kalır.
+- **Sormak:** "Bu ay yemeğe ne kadar harcadım?", "bütçem ne durumda?" ya da `/harcamalar`, `/harcamalar ekim`, `/harcamalar kafe`.
+- **Bütçe:** `/butce 6000` aylık bütçeyi ayarlar. Bütçenin %80'ine gelince ve aşınca haber verir, ay içinde günde ne kadar harcayabileceğini söyler.
+- **Ay sonu:** Her ayın 1'inde sabah 10:00'da geçen ayın özeti gelir: toplam, türlere göre dağılım, önceki aya göre fark, en büyük harcamalar.
+- **Silmek:** Kayıt mesajındaki `/harcama sil 5` ya da "kahve harcamasını sil" (önce onay ister).
+
+Harcamalar botun kendi Cloudflare deposunda, her ay için tek bir kayıtta durur. Fişi okumak için fotoğraftaki yazı Cloudflare'in yapay zekâsına gider. Yapay zekâ tutarı yanlış okuyabilir; kayıt mesajındaki tutara bir göz at.
 
 ## Komutlar
 
@@ -62,6 +74,9 @@ Telegram'da Jarvis botuna yazılır:
 | `/sil 2` | Listedeki 2 numaralı hatırlatmayı siler |
 | `/not metin` | Metni hafızaya kaydeder |
 | `/hafiza` | Hafızaya son kaydedilenler; `/hafiza staj` içinde "staj" geçenleri, `/hafiza 12` 12 numaralı notu (fotoğrafsa fotoğrafıyla) gösterir, `/hafiza sil 12` siler |
+| `/harcama 120 kahve` | Harcama kaydeder; `/harcama sil 5` siler |
+| `/harcamalar` | Bu ayın harcamaları, türlere göre toplam ve bütçe; `/harcamalar ekim`, `/harcamalar kafe` de olur |
+| `/butce 6000` | Aylık bütçeyi ayarlar; `/butce` durumu gösterir, `/butce sil` kaldırır |
 | `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
 | `/yardim` | Komut listesi |
 
