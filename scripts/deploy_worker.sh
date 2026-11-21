@@ -46,7 +46,7 @@ npx --yes wrangler@4 deploy
 jq -n --arg TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN" --arg TELEGRAM_CHAT_ID "$TELEGRAM_CHAT_ID" --arg WEBHOOK_SECRET "$WEBHOOK_SECRET" \
   --arg GH_TOKEN "${DISPATCH_TOKEN:-}" --arg CANVAS_TOKEN "${CANVAS_TOKEN:-}" --arg CANVAS_BASE_URL "${CANVAS_BASE_URL:-}" \
   --arg SCHEDULE "${DERS_PROGRAMI:-}" --arg BOOKED_USERNAME "${BOOKED_USERNAME:-}" --arg BOOKED_PASSWORD "${BOOKED_PASSWORD:-}" \
-  --arg TAVILY_API_KEY "${TAVILY_API_KEY:-}" \
+  --arg TAVILY_API_KEY "${TAVILY_API_KEY:-}" --arg TRACK17_KEY "${TRACK17_KEY:-}" \
   '$ARGS.named | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
 npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/secrets.json"
 rm -f "$RUNNER_TEMP/secrets.json"
@@ -76,6 +76,9 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"ozetle","description":"Bağlantıdaki sayfayı özetle"},
   {"command":"panel","description":"Jarvis paneli: her şey tek ekranda"},
   {"command":"pc","description":"Bilgisayarın: /pc kilitle, /pc ekran, /pc bağla"},
+  {"command":"deprem","description":"Son depremler ve deprem uyarısı"},
+  {"command":"kargo","description":"Kargo takibi: /kargo takip-numarası"},
+  {"command":"bul","description":"Telefonumu bul: iPhone çalar"},
   {"command":"mailler","description":"Okul mailine gelen son mailler"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},

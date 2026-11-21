@@ -132,6 +132,10 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
 .gate h1 { font: 700 22px var(--head); letter-spacing: .2em; color: var(--cyan); }
 .gate p { color: var(--muted); font-size: 18px; }
 .hidden { display: none !important; }
+.found { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: rgba(3, 7, 13, .92); color: var(--cyan); text-align: center; padding: 24px; }
+.found b { font: 700 34px var(--head); letter-spacing: .18em; text-shadow: 0 0 24px rgba(63, 216, 255, .7); }
+.found span { color: var(--muted); font-size: 18px; }
 
 @media (max-width: 980px) { .card, .card.wide { grid-column: span 6; } }
 @media (max-width: 680px) {
@@ -166,6 +170,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         <span class="chip"><span class="dot" id="dotPc"></span>Bilgisayar</span>
         <span class="chip"><span class="dot" id="dotLive"></span>Canlı</span>
         <button class="chip btn" id="notify" type="button">🔔 Bildirimler</button>
+        <button class="chip btn" id="findPhone" type="button">📱 Telefonumu bul</button>
         <button id="refresh" type="button">Yenile</button>
       </div>
     </header>
@@ -211,6 +216,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     </main>
     <footer id="foot"></footer>
   </div>
+  <div class="found hidden" id="found" role="status"><b>📍 BULDUN</b><span>Bildirimler durdu.</span></div>
 </div>
 <script>
 (function () {
@@ -522,6 +528,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       var d = {};
       try { d = JSON.parse(ev.data); } catch (e) { return; }
       if (d.tip === "yenile") load();
+      if (d.tip === "bulundu") $("foot").textContent = "📱 Telefon bulundu, bildirimler durdu.";
       if (d.tip === "pc") renderPc({ pc: { paired: true, online: d.online } });
     };
     sock.onclose = function () {
@@ -541,8 +548,37 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
   }
   var swReady = ("serviceWorker" in navigator) ? navigator.serviceWorker.register("/panel/sw.js", { scope: "/panel" }).catch(function () { return null; }) : Promise.resolve(null);
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("message", function (ev) { if (ev.data && ev.data.tip === "yenile") load(); });
+    navigator.serviceWorker.addEventListener("message", function (ev) {
+      if (ev.data && ev.data.tip === "yenile") load();
+      if (ev.data && ev.data.tip === "bulundu") found();
+    });
   }
+
+  // Telefonumu bul: bildirime dokunulunca çaldırma durur.
+  function found() {
+    if (!key) return;
+    fetch("/panel/found", { method: "POST", headers: { Authorization: "Bearer " + key } }).catch(function () {});
+    var box = $("found");
+    box.classList.remove("hidden");
+    setTimeout(function () { box.classList.add("hidden"); }, 3500);
+  }
+  if (/[?&]bul=1/.test(location.search)) {
+    try { window.history.replaceState(null, "", "/panel" + location.hash); } catch (e) {}
+    setTimeout(found, 300);
+  }
+  $("findPhone").addEventListener("click", function () {
+    var b = $("findPhone");
+    b.disabled = true;
+    $("foot").textContent = "Telefon aranıyor…";
+    fetch("/panel/bul", { method: "POST", headers: { Authorization: "Bearer " + key } })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        var tmp = new DOMParser().parseFromString("<p>" + (r.text || r.error || "Tamam.") + "</p>", "text/html");
+        $("foot").textContent = tmp.body.textContent;
+      })
+      .catch(function () { $("foot").textContent = "Jarvis'e ulaşılamadı."; })
+      .then(function () { b.disabled = false; });
+  });
   function notifyState() {
     var b = $("notify");
     if (!("Notification" in window) || !("PushManager" in window)) { b.textContent = "🔔 Bildirimler"; return; }

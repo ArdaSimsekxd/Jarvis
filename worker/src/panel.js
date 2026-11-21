@@ -237,14 +237,37 @@ const MANIFEST = JSON.stringify({
 });
 
 // Bildirimleri gösteren servis çalışanı (service worker). Uygulama kapalıyken de çalışır.
+// Telefonumu bul: telefondaki Jarvis uygulamasına 3 dakika boyunca 20 saniyede bir sesli bildirim gider.
+export function findText(r) {
+  if (!r?.subs) {
+    return "📱 Telefonuna ulaşamıyorum: Jarvis uygulamasında bildirimler açık değil. iPhone'da ana ekrandaki Jarvis'i açıp üstteki 🔔 Bildirimler düğmesine bas, sonra yeniden dene.";
+  }
+  if (!r.sent) return "📱 Bildirim gönderemedim. Telefonun internete bağlı olmayabilir; biraz sonra yeniden dener misin?";
+  return [
+    "📱 Telefonunu çaldırıyorum: 3 dakika boyunca 20 saniyede bir bildirim gelecek.",
+    "Bulunca bildirime dokun, durur. (Ya da <code>/bul dur</code> yaz.)",
+    "Telefon sessizdeyse yalnızca titrer. Sessizdeyken de ses çıkarması için <a href=\"https://www.icloud.com/find\">iCloud Bul</a> sayfasından \"Ses Çal\"ı kullan.",
+  ].join("\n");
+}
+
+export async function cmdBul(args, ctx) {
+  if (!ctx.pc) return "Bu özellik için telefondaki Jarvis uygulaması gerekiyor. Kurmak için /panel yaz.";
+  if (["dur", "durdur", "iptal", "buldum", "tamam"].includes(plain(args ?? ""))) {
+    const r = await ctx.pc.call("findstop");
+    return r.stopped ? "👍 Tamam, çaldırmayı durdurdum." : "Şu an çalan bir arama yok.";
+  }
+  return findText(await ctx.pc.call("find"));
+}
+
 export const SERVICE_WORKER = `self.addEventListener("install", function () { self.skipWaiting(); });
 self.addEventListener("activate", function (e) { e.waitUntil(self.clients.claim()); });
 self.addEventListener("push", function (e) {
   var d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Jarvis", {
-    body: d.body || "", icon: "/panel/icon-180.png", badge: "/panel/icon-180.png", data: { url: d.url || "/panel" },
-  }).then(function () {
+  var opts = { body: d.body || "", icon: "/panel/icon-180.png", badge: "/panel/icon-180.png", data: { url: d.url || "/panel", bul: !!d.bul } };
+  if (d.tag) { opts.tag = d.tag; opts.renotify = true; }
+  if (d.bul) { opts.requireInteraction = true; opts.vibrate = [400, 200, 400, 200, 400]; }
+  e.waitUntil(self.registration.showNotification(d.title || "Jarvis", opts).then(function () {
     return self.clients.matchAll({ type: "window" }).then(function (list) {
       list.forEach(function (c) { c.postMessage({ tip: "yenile" }); });
     });
@@ -252,9 +275,21 @@ self.addEventListener("push", function (e) {
 });
 self.addEventListener("notificationclick", function (e) {
   e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
-    for (var i = 0; i < list.length; i++) { if ("focus" in list[i]) return list[i].focus(); }
-    return self.clients.openWindow((e.notification.data && e.notification.data.url) || "/panel");
+  var data = e.notification.data || {};
+  var url = data.url || "/panel";
+  var closeFind = data.bul ? self.registration.getNotifications().then(function (list) {
+    list.forEach(function (n) { if (n.data && n.data.bul) n.close(); });
+  }) : Promise.resolve();
+  e.waitUntil(closeFind.then(function () {
+    return self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  }).then(function (list) {
+    for (var i = 0; i < list.length; i++) {
+      if ("focus" in list[i]) {
+        if (data.bul) list[i].postMessage({ tip: "bulundu" });
+        return list[i].focus();
+      }
+    }
+    return self.clients.openWindow(url);
   }));
 });
 `;
@@ -327,6 +362,13 @@ export async function handlePanel(request, ctx, src) {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
     if (!ctx.pc) return json({ error: "Bildirimler bu kurulumda yok." }, 400);
     return json(await ctx.pc.call("vapid"));
+  }
+  // Telefonumu bul: panel bilgisayarda açıkken düğmeyle başlar; telefonda bildirime dokununca durur.
+  if ((path === "/panel/bul" || path === "/panel/found") && request.method === "POST") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    if (!ctx.pc) return json({ text: "Bildirimler bu kurulumda yok." });
+    if (path === "/panel/found") return json(await ctx.pc.call("findstop"));
+    return json({ text: findText(await ctx.pc.call("find")) });
   }
   if (path === "/panel/pc" && request.method === "POST") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);

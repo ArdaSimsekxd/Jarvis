@@ -15,6 +15,9 @@ const MAX_PHOTO = 9 * 1024 * 1024;       // fotoğraf olarak gönderilebilecek e
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const LOGIN_TTL_MS = 15 * 60 * 1000;     // uygulamaya giriş kodu 15 dakika geçerli
 const MAX_SUBS = 5;                      // bildirim alabilecek en fazla cihaz
+const FIND_MS = 3 * 60 * 1000;           // telefonumu bul: 3 dakika boyunca
+const FIND_EVERY_MS = 20 * 1000;         // 20 saniyede bir bildirim
+const FIND_RINGS = 9;
 const PUSH_SUBJECT = "https://github.com/ArdaSimsekxd/Jarvis";   // bildirim servislerine verilen iletişim adresi   // 32 harf: karışan 0/O, 1/I yok
 
 export const PC_HELP = [
@@ -278,14 +281,22 @@ export class PcHub {
       return { ok: true };
     }
     if (op === "push") {
+      return this.pushAll({ title: String(body.title ?? "Jarvis").slice(0, 80), body: String(body.body ?? "").slice(0, 400), url: "/panel" });
+    }
+    // Telefonumu bul: birkaç dakika boyunca aralıklarla sesli bildirim gönderilir (Durable Object alarmıyla).
+    if (op === "find") {
       const subs = (await storage.get("subs")) ?? [];
-      if (!subs.length) return { sent: 0 };
-      const vapid = await this.vapid();
-      const data = { title: String(body.title ?? "Jarvis").slice(0, 80), body: String(body.body ?? "").slice(0, 400), url: "/panel" };
-      const results = await Promise.all(subs.map((sub) => sendPush(sub, data, vapid, PUSH_SUBJECT, this.pushFetch ?? fetch).catch(() => 0)));
-      const alive = subs.filter((_, i) => results[i] !== 404 && results[i] !== 410);   // silinmiş abonelikler bırakılır
-      if (alive.length !== subs.length) await storage.put("subs", alive);
-      return { sent: results.filter((r) => r >= 200 && r < 300).length };
+      if (!subs.length) return { subs: 0, sent: 0 };
+      await storage.put("find", { until: Date.now() + FIND_MS, n: 0 });
+      const sent = await this.findRing();
+      return { subs: subs.length, sent };
+    }
+    if (op === "findstop") {
+      const had = Boolean(await storage.get("find"));
+      await storage.delete("find");
+      await this.state.storage.deleteAlarm?.();
+      if (had) this.broadcast({ tip: "bulundu" });
+      return { stopped: had };
     }
     if (op === "status") {
       return { paired: Boolean(await storage.get("token")), online: this.sockets().length > 0 };
@@ -377,6 +388,44 @@ export class PcHub {
     for (const ws of this.sockets("app")) {
       try { ws.send(text); } catch { /* kapanmış */ }
     }
+  }
+
+  // Bütün kayıtlı cihazlara bildirim. Silinmiş abonelikler (404/410) bırakılır.
+  async pushAll(data) {
+    const storage = this.state.storage;
+    const subs = (await storage.get("subs")) ?? [];
+    if (!subs.length) return { sent: 0 };
+    const vapid = await this.vapid();
+    const results = await Promise.all(subs.map((sub) => sendPush(sub, data, vapid, PUSH_SUBJECT, this.pushFetch ?? fetch).catch(() => 0)));
+    const alive = subs.filter((_, i) => results[i] !== 404 && results[i] !== 410);
+    if (alive.length !== subs.length) await storage.put("subs", alive);
+    return { sent: results.filter((r) => r >= 200 && r < 300).length };
+  }
+
+  // Telefonumu bul: bir bildirim gönderir, süre bitmediyse bir sonrakini kurar.
+  async findRing() {
+    const storage = this.state.storage;
+    const find = await storage.get("find");
+    if (!find) return 0;
+    if (Date.now() > find.until || find.n >= FIND_RINGS) {
+      await storage.delete("find");
+      return 0;
+    }
+    find.n += 1;
+    await storage.put("find", find);
+    const { sent } = await this.pushAll({
+      title: "📍 Buradayım!",
+      body: find.n === 1 ? "Telefonunu arıyorsun. Bulunca bu bildirime dokun." : `Hâlâ buradayım (${find.n}/${FIND_RINGS}). Bulunca dokun.`,
+      url: "/panel?bul=1",
+      tag: `bul-${find.n}`,
+      bul: true,
+    });
+    if (find.n < FIND_RINGS) await storage.setAlarm?.(Date.now() + FIND_EVERY_MS);
+    return sent;
+  }
+
+  async alarm() {
+    await this.findRing();
   }
 
   async vapid() {

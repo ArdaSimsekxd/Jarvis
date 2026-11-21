@@ -103,6 +103,13 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - Sayfa 3 dakikada bir kendini yeniler. Canvas ödevleri 10 dakikada bir okunur.
 - **Güvenlik:** Bağlantının sonundaki gizli anahtar olmadan sayfa boş gelir ve veri okunamaz. Anahtar adresin `#` kısmında durduğu için sunucu kayıtlarına düşmez. Bağlantıyı yanlışlıkla paylaştıysan `/panel yenile` yaz; eski bağlantı ve uygulamadaki girişler çalışmaz olur, eski cihazlara bildirim gitmez. Panelden bilgisayar kapatılamaz, yalnızca kilitlenir ya da uyutulur.
 
+## Deprem, kargo, telefonumu bul
+
+- **Deprem uyarısı:** Jarvis AFAD'ın son depremler listesine 2 dakikada bir bakar (AFAD'a ulaşamazsa EMSC, o da olmazsa USGS). Kayseri'ye 150 km içinde 3.5 ve üstü, 400 km içinde 4.5 ve üstü, Türkiye'nin her yerinde 5.0 ve üstü depremleri Telegram'a ve telefondaki uygulamaya yazar. Gece 00:00-07:00 arası 4.0 altını bildirmez. `/deprem` son depremleri gösterir; `/deprem ekle İzmir` bir şehri de takip eder (en fazla 5), `/deprem sil İzmir` çıkarır, `/deprem esik 4` yakındaki depremler için eşiği değiştirir, `/deprem kapat` / `/deprem ac`. Kurulum gerekmez.
+- **Kargo takibi:** `/kargo 123456789012 kulaklık` kargoyu kaydeder (sondaki ad isteğe bağlı) ve takip sayfasının bağlantısını verir. Firmayı da yazabilirsin: `/kargo aras 123456789012`. Yurtiçi, Aras ve PTT'de firmanın kendi sayfası açılır, diğerlerinde firmayı kendisi bulan 17TRACK sayfası. Jarvis her sabah 10:00'da bekleyen kargoları bağlantılarıyla hatırlatır. `/kargo` hepsini gösterir; gelince `/kargo geldi 1` yaz. Kayıtlar 30 gün sonra kendiliğinden düşer.
+  - **İsteğe bağlı otomatik takip:** 17TRACK API anahtarın olursa (`TRACK17_KEY` secret'ı) Jarvis durumu yarım saatte bir kendisi okur. Kargo yola çıkınca, dağıtıma çıkınca ve teslim edilince haber verir.
+- **Telefonumu bul:** `/bul` (ya da "telefonumu bulamıyorum") yazınca iPhone'daki Jarvis uygulamasına 3 dakika boyunca 20 saniyede bir bildirim gider. Bulunca bildirime dokun, durur (`/bul dur` da olur). Bilgisayardan da çalışır: Telegram Desktop'tan yaz ya da paneli bilgisayarda açıp "📱 Telefonumu bul"a bas. Uygulamada bildirimlerin açık olması gerekir. Telefon sessizdeyse yalnızca titrer; sessizdeyken de ses çıkarması için [iCloud Bul](https://www.icloud.com/find) sayfasındaki "Ses Çal" kullanılmalı.
+
 ## Komutlar
 
 Telegram'da Jarvis botuna yazılır:
@@ -129,6 +136,9 @@ Telegram'da Jarvis botuna yazılır:
 | `/ara yarın Kayseri Ankara otobüs` | İnternette arar, kaynaklı kısa cevap yazar (`TAVILY_API_KEY` gerekir) |
 | `/ozetle https://...` | Bağlantıdaki sayfayı okuyup özetler; arkasına soru da yazılabilir |
 | `/panel` | Jarvis panelinin özel bağlantısı; `/panel yenile` bağlantıyı değiştirir |
+| `/deprem` | Son depremler ve uyarı ayarları; `/deprem ekle İzmir`, `/deprem esik 4`, `/deprem kapat` |
+| `/kargo 123456789012 kulaklık` | Kargoyu kaydeder, takip bağlantısını verir, her sabah hatırlatır; `/kargo` hepsi, `/kargo geldi 1` |
+| `/bul` | Telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika bildirimle çalar; `/bul dur` |
 | `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; ilk kez `/pc bağla` |
 | `/yardim` | Komut listesi |
 
@@ -204,6 +214,7 @@ Repoda **Settings > Secrets and variables > Actions > New repository secret** il
 | `BOOKED_USERNAME`, `BOOKED_PASSWORD` | Rezervasyon sitesindeki kullanıcı adın ve şifren (isteğe bağlı, `/fitness` için) |
 | `DERS_PROGRAMI` | Ders programın, yukarıdaki biçimde (isteğe bağlı: `/dersler`, sabah özeti ve akşam önizlemesi için) |
 | `TAVILY_API_KEY` | tavily.com'un verdiği anahtar (isteğe bağlı: internette arama ve sayfa özeti için) |
+| `TRACK17_KEY` | 17track.net API'nin verdiği anahtar (isteğe bağlı: kargo takibi için) |
 | `DISPATCH_TOKEN` | GitHub'da üretilen, yalnızca bu repoda "Actions: Read and write" izni olan anahtar (isteğe bağlı ama önerilir: kontrollerin zamanında çalışması için) |
 
 Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen aynı sayfada **Variables** sekmesine `CANVAS_BASE_URL` ekle.
@@ -257,6 +268,8 @@ jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktar�
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
 worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocket)
+worker/src/quake.js           Deprem uyarısı (AFAD, yedekte EMSC ve USGS)
+worker/src/cargo.js           Kargo takibi (bağlantı + hatırlatma; anahtar varsa 17TRACK)
 worker/src/panel.js           Jarvis paneli ve iPhone uygulaması: veriler, giriş, sohbet; sayfası panel_page.js
 worker/src/webpush.js         Uygulama bildirimleri (Web Push, VAPID)
 pc/jarvis_pc.py               Windows'ta çalışan Jarvis programı (kurulum + komutlar)
