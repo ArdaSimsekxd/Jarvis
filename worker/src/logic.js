@@ -258,7 +258,7 @@ export function isSubmitted(a) {
 }
 
 // Teslim tarihi geçmiş ödev gerçekten eksik mi? Canvas'ın kendi "missing" işaretine güvenir.
-function isMissing(a) {
+export function isMissing(a) {
   const missing = a?.submission?.missing;
   if (missing !== undefined && missing !== null) return Boolean(missing);
   return (a?.submission_types ?? []).some((t) => t.startsWith("online") || t === "external_tool");
@@ -409,6 +409,7 @@ export const HELP = [
   "",
   "/ara soru — internette ara (ör. <code>/ara RTX 5070 fiyatı</code>)",
   "/ozetle bağlantı — sayfayı okuyup özetle",
+  "/panel — Jarvis paneli: her şey tek ekranda",
   "/pc — bilgisayarın (kilitle, uyku, ekran, ses, uygulama aç; ayrıntı: <code>/pc yardım</code>, ilk kez: <code>/pc bağla</code>)",
   "",
   "/harcama 120 kahve — harcama kaydet (fiş fotoğrafı da olur)",
