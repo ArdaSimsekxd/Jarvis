@@ -18,8 +18,9 @@ function fakeState() {
       async put(k, v) { data.set(k, structuredClone(v)); },
       async delete(k) { return data.delete(k); },
     },
-    getWebSockets: () => sockets,
-    acceptWebSocket: (ws) => sockets.push(ws),
+    getWebSockets: (tag) => sockets.filter((ws) => !tag || (ws.tags ?? ["pc"]).includes(tag)),
+    getTags: (ws) => ws.tags ?? ["pc"],
+    acceptWebSocket: (ws, tags) => { ws.tags = tags; sockets.push(ws); },
   };
 }
 

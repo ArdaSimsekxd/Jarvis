@@ -13,7 +13,8 @@ export const PANEL_HTML = String.raw`<!doctype html>
 <meta name="apple-mobile-web-app-title" content="Jarvis">
 <title>Jarvis</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2303070d'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%233fd8ff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%233fd8ff'/%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2303070d'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%233fd8ff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%233fd8ff'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="/panel/icon-180.png">
+<link rel="manifest" href="/panel/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -111,6 +112,21 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .toast { min-height: 22px; margin-top: 10px; color: var(--cyan); font-size: 15px; }
 
+.card.full { grid-column: 1 / -1; }
+.chatlog { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; margin-bottom: 10px; }
+.msg { max-width: 88%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; }
+.msg.me { align-self: flex-end; background: rgba(63, 216, 255, .16); border: 1px solid var(--line); }
+.msg.bot { align-self: flex-start; background: rgba(255, 255, 255, .04); border: 1px solid rgba(63, 216, 255, .12); }
+.msg.wait { color: var(--muted); font-style: italic; }
+.msg code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: var(--cyan); }
+.chatform { display: flex; gap: 8px; }
+input[type=text] { flex: 1; min-width: 0; font: 500 17px var(--body); color: var(--text); background: rgba(3, 7, 13, .7); border: 1px solid var(--line);
+  border-radius: 6px; padding: 10px 12px; outline: none; }
+input[type=text]:focus { border-color: var(--cyan); box-shadow: 0 0 12px rgba(63, 216, 255, .25); }
+.gate form { display: flex; gap: 8px; margin-top: 18px; }
+.gate input { text-transform: uppercase; letter-spacing: .2em; text-align: center; }
+.chip.btn { cursor: pointer; background: none; }
+.chip.btn:hover { color: var(--cyan); }
 footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing: .12em; text-align: center; text-transform: uppercase; }
 .gate { max-width: 520px; margin: 18vh auto 0; text-align: center; }
 .gate h1 { font: 700 22px var(--head); letter-spacing: .2em; color: var(--cyan); }
@@ -126,6 +142,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
   .core { inset: 46px; }
   .clock { font-size: 24px; }
   .hello p { margin-left: auto; margin-right: auto; }
+  #chatHint { display: none; }
 }
 </style>
 </head>
@@ -133,7 +150,12 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
 <div class="wrap">
   <div id="gate" class="gate hidden">
     <h1>ERİŞİM YOK</h1>
-    <p id="gateText">Bu panel yalnızca Jarvis'in gönderdiği özel bağlantıyla açılır. Telegram'da Jarvis'e <b>/panel</b> yaz.</p>
+    <p id="gateText">Telegram'da Jarvis'e <b>/panel</b> yaz ve gelen kodu buraya gir.</p>
+    <form id="loginForm" autocomplete="off">
+      <input type="text" id="code" placeholder="ABCD-EFGH" maxlength="12" autocapitalize="characters" spellcheck="false" aria-label="Giriş kodu">
+      <button type="submit">Giriş</button>
+    </form>
+    <p id="loginMsg" class="toast"></p>
   </div>
 
   <div id="app" class="hidden">
@@ -142,6 +164,8 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       <div class="chips">
         <span class="chip"><span class="dot" id="dotCanvas"></span>Canvas</span>
         <span class="chip"><span class="dot" id="dotPc"></span>Bilgisayar</span>
+        <span class="chip"><span class="dot" id="dotLive"></span>Canlı</span>
+        <button class="chip btn" id="notify" type="button">🔔 Bildirimler</button>
         <button id="refresh" type="button">Yenile</button>
       </div>
     </header>
@@ -159,6 +183,13 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     </section>
 
     <main class="grid">
+      <section class="card full"><h2>JARVIS İLE KONUŞ <span class="count" id="chatHint">Telegram'da yazdığın her şeyi buradan da yazabilirsin</span></h2>
+        <div class="chatlog" id="chatlog" aria-live="polite"></div>
+        <form class="chatform" id="chatForm" autocomplete="off">
+          <input type="text" id="chatInput" placeholder="Jarvis'e yaz: yarın derslerim ne?" maxlength="1000" aria-label="Jarvis'e mesaj">
+          <button type="submit">Gönder</button>
+        </form>
+      </section>
       <section class="card"><h2>BUGÜN <span class="count" id="cLessons"></span></h2><div id="lessons"></div></section>
       <section class="card wide"><h2>ÖDEVLER <span class="count" id="cHomework"></span></h2><div id="homework"></div></section>
       <section class="card wide"><h2>YAKLAŞANLAR <span class="count" id="cUpcoming"></span></h2><div id="upcoming"></div></section>
@@ -396,6 +427,157 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     if (text) $("gateText").textContent = text;
   }
 
+  $("loginForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var code = $("code").value.trim();
+    if (!code) return;
+    $("loginMsg").textContent = "Kontrol ediliyor…";
+    fetch("/panel/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code }) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.key) { $("loginMsg").textContent = r.error || "Giriş olmadı."; return; }
+        key = r.key;
+        try { localStorage.setItem(STORE, key); } catch (e) {}
+        $("loginMsg").textContent = "";
+        load(); live();
+      })
+      .catch(function () { $("loginMsg").textContent = "Jarvis'e ulaşılamadı."; });
+  });
+
+  // Bot cevapları Telegram'ın sınırlı HTML'iyle gelir: yalnızca kalın, eğik, kod ve bağlantı kopyalanır.
+  var ALLOWED = { b: "b", strong: "b", i: "i", em: "i", u: "u", s: "s", code: "code", pre: "pre", a: "a" };
+  function rich(html) {
+    var doc = new DOMParser().parseFromString("<div>" + html + "</div>", "text/html");
+    var out = document.createDocumentFragment();
+    (function walk(node, into) {
+      Array.prototype.forEach.call(node.childNodes, function (n) {
+        if (n.nodeType === 3) return into.appendChild(document.createTextNode(n.nodeValue));
+        if (n.nodeType !== 1 || /^(script|style|iframe|object|embed)$/i.test(n.tagName)) return;
+        var tag = ALLOWED[n.tagName.toLowerCase()];
+        if (!tag) return walk(n, into);
+        var e = document.createElement(tag);
+        if (tag === "a") {
+          var h = n.getAttribute("href") || "";
+          if (/^https?:\/\//i.test(h)) { e.href = h; e.target = "_blank"; e.rel = "noopener noreferrer"; }
+        }
+        walk(n, e);
+        into.appendChild(e);
+      });
+    })(doc.body.firstChild, out);
+    return out;
+  }
+
+  var CHAT = "jarvis-chat";
+  var history = [];
+  try { history = JSON.parse(localStorage.getItem(CHAT) || "[]"); } catch (e) { history = []; }
+  function bubble(who, html, cls) {
+    var m = el("div", "msg " + who + (cls ? " " + cls : ""));
+    if (who === "bot") m.appendChild(rich(html)); else m.textContent = html;
+    $("chatlog").appendChild(m);
+    $("chatlog").scrollTop = $("chatlog").scrollHeight;
+    return m;
+  }
+  function remember(who, text) {
+    history.push({ w: who, t: text });
+    history = history.slice(-40);
+    try { localStorage.setItem(CHAT, JSON.stringify(history)); } catch (e) {}
+  }
+  history.forEach(function (h) { bubble(h.w, h.t); });
+  if (!history.length) bubble("bot", "Merhaba efendim. Ne yapmamı istersin? Örnek: <i>bu hafta beni ne bekliyor?</i>, <i>kahveye 80 TL verdim</i>, <i>bilgisayarı kilitle</i>");
+
+  $("chatForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var input = $("chatInput"), text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    bubble("me", text); remember("me", text);
+    var waiting = bubble("bot", "Düşünüyorum…", "wait");
+    fetch("/panel/chat", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ text: text }) })
+      .then(function (r) { if (r.status === 401) throw new Error("yetki"); return r.json(); })
+      .then(function (r) {
+        waiting.remove();
+        (r.replies && r.replies.length ? r.replies : ["Tamam."]).forEach(function (h) { bubble("bot", h); remember("bot", h); });
+      })
+      .catch(function (err) {
+        waiting.remove();
+        if (err.message === "yetki") return gate("Giriş süren dolmuş. Telegram'da /panel yazıp gelen kodu gir.");
+        bubble("bot", "Jarvis'e ulaşılamadı, biraz sonra yeniden dener misin?");
+      });
+  });
+
+  // Canlı bağlantı: yeni bir şey olunca Jarvis haber verir, ekran hemen yenilenir.
+  var sock = null, wait = 2000, pinger = null;
+  function live() {
+    if (!key || !("WebSocket" in window) || (sock && sock.readyState <= 1)) return;
+    try { sock = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/panel/live?k=" + encodeURIComponent(key)); }
+    catch (e) { return; }
+    sock.onopen = function () {
+      wait = 2000;
+      $("dotLive").className = "dot on";
+      clearInterval(pinger);
+      pinger = setInterval(function () { try { sock.send("ping"); } catch (e) {} }, 30000);
+    };
+    sock.onmessage = function (ev) {
+      if (ev.data === "pong") return;
+      var d = {};
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (d.tip === "yenile") load();
+      if (d.tip === "pc") renderPc({ pc: { paired: true, online: d.online } });
+    };
+    sock.onclose = function () {
+      $("dotLive").className = "dot off";
+      clearInterval(pinger);
+      if (!document.hidden) setTimeout(live, wait);
+      wait = Math.min(wait * 2, 60000);
+    };
+  }
+
+  // Bildirimler (iPhone'da yalnızca Ana Ekrana eklenmiş uygulamada çalışır)
+  function b64ToBytes(s) {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    var bin = atob(s + "===".slice((s.length + 3) % 4)), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  var swReady = ("serviceWorker" in navigator) ? navigator.serviceWorker.register("/panel/sw.js", { scope: "/panel" }).catch(function () { return null; }) : Promise.resolve(null);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (ev) { if (ev.data && ev.data.tip === "yenile") load(); });
+  }
+  function notifyState() {
+    var b = $("notify");
+    if (!("Notification" in window) || !("PushManager" in window)) { b.textContent = "🔔 Bildirimler"; return; }
+    if (Notification.permission === "granted") {
+      swReady.then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (sub) {
+        b.textContent = sub ? "🔔 Bildirim açık" : "🔔 Bildirimler";
+      });
+    } else if (Notification.permission === "denied") b.textContent = "🔕 Bildirim kapalı";
+  }
+  $("notify").addEventListener("click", function () {
+    var toast = function (t) { $("foot").textContent = t; window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); };
+    var standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+    if (!("Notification" in window) || !("PushManager" in window)) {
+      return toast(standalone ? "Bu cihaz bildirimleri desteklemiyor (iOS 16.4 ve üstü gerekir)." : "Bildirimler için önce Safari'de paylaş düğmesinden Ana Ekrana Ekle'yi seç, sonra uygulamayı ana ekrandan aç.");
+    }
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== "granted") throw new Error("izin");
+      return Promise.all([swReady, fetch("/panel/push-key", { headers: { Authorization: "Bearer " + key } }).then(function (r) { return r.json(); })]);
+    }).then(function (x) {
+      var reg = x[0], k = x[1];
+      if (!reg || !k.publicKey) throw new Error("hazir degil");
+      return reg.pushManager.getSubscription().then(function (old) {
+        return old || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.publicKey) });
+      });
+    }).then(function (sub) {
+      return fetch("/panel/push", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ sub: sub.toJSON() }) });
+    }).then(function (r) {
+      toast(r.ok ? "Bildirimler açıldı. Deneme bildirimi gönderildi." : "Bildirim kaydı olmadı.");
+      notifyState();
+    }).catch(function (err) {
+      toast(err.message === "izin" ? "Bildirim izni verilmedi. Ayarlar > Bildirimler > Jarvis'ten açabilirsin." : "Bildirimler açılamadı, biraz sonra yeniden dener misin?");
+      notifyState();
+    });
+  });
+
   var loading = false;
   function load() {
     if (!key) return gate();
@@ -436,11 +618,13 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
   });
 
   $("refresh").addEventListener("click", load);
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { load(); live(); } });
   tick();
   setInterval(tick, 1000);
   setInterval(function () { if (!document.hidden) load(); }, 180000);
   load();
+  live();
+  notifyState();
 })();
 </script>
 </body>

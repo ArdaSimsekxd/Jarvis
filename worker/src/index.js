@@ -9,7 +9,7 @@ import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./mem
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
 import { PC_FILE, cmdPc } from "./pc.js";
-import { cmdPanel, handlePanel } from "./panel.js";
+import { cmdPanel, handlePanel, plainText } from "./panel.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -457,6 +457,37 @@ export async function runSchedule(ctx) {
   return started;
 }
 
+// Açık Jarvis uygulamalarına "bir şey değişti" der (ekran hemen yenilenir).
+async function notifyApp(env) {
+  if (env.PC) await pcCall(env, "notify").catch(() => {});
+}
+
+// Kendiliğinden gönderilen mesajları telefona bildirim olarak yollar (en fazla 3 tane).
+export async function pushToApp(env, said) {
+  if (!env.PC || !said.length) return;
+  for (const text of said.slice(0, 3)) {
+    const body = plainText(text);
+    const [first, ...rest] = body.split("\n");
+    const title = rest.length && first.length <= 60 ? first : "Jarvis";
+    await pcCall(env, "push", { title, body: title === "Jarvis" ? body : rest.join("\n").trim() || first }).catch(() => {});
+  }
+  await notifyApp(env);
+}
+
+// Uygulamanın içinden yazılan mesaj: Telegram'daki gibi işlenir, cevaplar uygulamaya döner.
+async function appChat(env, c, text, ctx) {
+  const out = [];
+  const chatCtx = {
+    ...c,
+    send: async (t) => { out.push(t); return true; },
+    sendPhoto: async (photo, caption = "") => { out.push(caption ? `${caption}\n<i>(fotoğraf Telegram'a gönderildi)</i>` : "<i>📸 Fotoğrafı Telegram'a gönderdim.</i>"); return c.sendPhoto(photo, caption); },
+    typing: async () => {},
+  };
+  await handleMessage({ chat: { id: c.chatId }, text }, chatCtx);
+  ctx?.waitUntil?.(notifyApp(env));
+  return out;
+}
+
 // Bilgisayar bağlantısını tutan Durable Object'e bir iş gönderir.
 async function pcCall(env, op, body = {}) {
   const stub = env.PC.get(env.PC.idFromName("pc"));
@@ -544,6 +575,10 @@ export default {
       return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
     }
     // Jarvis paneli: sayfa herkese açık ama boş; veriler yalnızca gizli anahtarla okunur
+    // Telefondaki uygulamanın canlı bağlantısı (anahtar kontrolünü PcHub yapar)
+    if (url.pathname === "/panel/live") {
+      return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
+    }
     if (url.pathname === "/panel" || url.pathname.startsWith("/panel/")) {
       const c = context(env, Date.now(), url.origin);
       const src = {
@@ -551,6 +586,7 @@ export default {
         reminders: () => listReminders(env.KV),
         names: () => courseNames(c),
         menu: () => c.fetchMenu(),
+        chat: (text) => appChat(env, c, text, ctx),
       };
       return (await handlePanel(request, c, src)) ?? new Response("yok", { status: 404 });
     }
@@ -565,19 +601,25 @@ export default {
     } catch { /* bozuk istek: aşağıda yine "ok" denir */ }
     // Cevap arka planda hazırlanır; Telegram'a hemen "ok" denir ki yapay zekâ düşünürken aynı mesajı yeniden yollamasın.
     if (update?.message) {
-      ctx.waitUntil(handleMessage(update.message, context(env, Date.now(), url.origin)).catch((err) => console.error("update işlenemedi", err?.message)));
+      ctx.waitUntil(handleMessage(update.message, context(env, Date.now(), url.origin))
+        .catch((err) => console.error("update işlenemedi", err?.message))
+        .then(() => notifyApp(env)));
     }
     return new Response("ok");
   },
 
   async scheduled(event, env, ctx) {
     const c = context(env, event?.scheduledTime ?? Date.now());
+    // Jarvis'in kendiliğinden gönderdiği mesajlar (hatırlatma, bulunan tarih, bütçe...) telefona bildirim olarak da gider.
+    const said = [];
+    const send = c.send;
+    c.send = async (text) => { said.push(text); return send(text); };
     ctx.waitUntil(Promise.all([
       sendDueReminders(c),
       runSchedule(c),
       runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
       scanDates(c).catch((err) => console.error("tarihler okunamadı", err?.message)),
       monthlyReport(c).catch((err) => console.error("harcama özeti gönderilemedi", err?.message)),
-    ]));
+    ]).then(() => pushToApp(env, said)));
   },
 };

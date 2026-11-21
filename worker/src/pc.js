@@ -2,6 +2,8 @@
 // Durable Object'e (PcHub) WebSocket ile bağlanır. Bot bir iş gönderir, program yapar ve sonucu yazar.
 // Program bağlantıyı kendisi açtığı için modemde ayar gerekmez. Yalnızca programın tanıdığı işler yapılır.
 import { esc, plain } from "./logic.js";
+import { PANEL_KEY } from "./panel.js";
+import { makeVapidKeys, sendPush, trustedEndpoint } from "./webpush.js";
 
 export const PC_FILE = "pc/jarvis_pc.py";
 const PAIR_TTL_MS = 60 * 60 * 1000;      // eşleştirme kodu 1 saat geçerli
@@ -10,7 +12,10 @@ const WAIT_MS = 9000;                    // bilgisayarın cevabı için beklenen
 const SLOW_WAIT_MS = 15000;              // ekran görüntüsü gibi yavaş işler için
 const MAX_UPLOAD = 45 * 1024 * 1024;     // Telegram botları en fazla 50 MB dosya gönderebilir
 const MAX_PHOTO = 9 * 1024 * 1024;       // fotoğraf olarak gönderilebilecek en büyük boy (üstü dosya olarak gider)
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // 32 harf: karışan 0/O, 1/I yok
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const LOGIN_TTL_MS = 15 * 60 * 1000;     // uygulamaya giriş kodu 15 dakika geçerli
+const MAX_SUBS = 5;                      // bildirim alabilecek en fazla cihaz
+const PUSH_SUBJECT = "https://github.com/ArdaSimsekxd/Jarvis";   // bildirim servislerine verilen iletişim adresi   // 32 harf: karışan 0/O, 1/I yok
 
 export const PC_HELP = [
   "🖥 <b>Bilgisayar komutları</b>",
@@ -174,12 +179,13 @@ export class PcHub {
     }
   }
 
-  sockets() {
-    return this.state.getWebSockets?.() ?? [];
+  // "pc": bilgisayardaki program, "app": telefondaki Jarvis uygulaması
+  sockets(tag = "pc") {
+    return this.state.getWebSockets?.(tag) ?? [];
   }
 
-  closeAll(code, reason) {
-    for (const ws of this.sockets()) {
+  closeAll(code, reason, tag = "pc") {
+    for (const ws of this.sockets(tag)) {
       try { ws.close(code, reason); } catch { /* zaten kapalı */ }
     }
   }
@@ -197,6 +203,7 @@ export class PcHub {
       if (path === "/pc/pair" && request.method === "POST") return await this.pair(request);
       if (path === "/pc/connect") return await this.connect(request);
       if (path === "/pc/upload" && request.method === "POST") return await this.upload(request);
+      if (path === "/panel/live") return await this.live(request);
     } catch (err) {
       console.error("bilgisayar isteği işlenemedi", err?.message);
       return json({ error: "Jarvis'te bir hata oldu, biraz sonra yeniden dener misin?" }, 500);
@@ -226,6 +233,59 @@ export class PcHub {
     if (op === "cput") {
       await storage.put(`cache:${body.name}`, { value: body.value, exp: Date.now() + Number(body.ttl) * 1000 });
       return { ok: true };
+    }
+    // Bir şey değişti (yeni mesaj, harcama, hatırlatma): panelin önbelleği silinir, açık uygulamalar yenilenir.
+    if (op === "notify") {
+      await storage.delete("cache:data");
+      this.broadcast({ tip: "yenile" });
+      return { ok: true };
+    }
+    // Ana ekrandaki uygulamaya giriş kodu (iPhone'da uygulamanın Safari'den ayrı bir hafızası var)
+    if (op === "lcode") {
+      const code = pairCode();
+      await storage.put("login", { code: cleanCode(code), exp: Date.now() + LOGIN_TTL_MS, tries: 0 });
+      return { code };
+    }
+    if (op === "lcheck") {
+      const pending = await storage.get("login");
+      if (!pending || pending.exp < Date.now()) return { ok: false, expired: true };
+      if (cleanCode(body.code) !== pending.code) {
+        pending.tries += 1;
+        if (pending.tries >= PAIR_TRIES) await storage.delete("login");
+        else await storage.put("login", pending);
+        return { ok: false };
+      }
+      await storage.delete("login");
+      return { ok: true };
+    }
+    if (op === "vapid") return { publicKey: (await this.vapid()).publicKey };
+    if (op === "pushsub") {
+      const sub = body.sub;
+      if (!sub || !trustedEndpoint(sub.endpoint) || !sub.keys?.p256dh || !sub.keys?.auth) return { ok: false };
+      const subs = ((await storage.get("subs")) ?? []).filter((x) => x.endpoint !== sub.endpoint);
+      subs.push({ endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) } });
+      await storage.put("subs", subs.slice(-MAX_SUBS));
+      return { ok: true };
+    }
+    if (op === "pushclear") {
+      await storage.delete("subs");
+      this.closeAll(4001, "bağlantı yenilendi", "app");
+      return { ok: true };
+    }
+    if (op === "pushunsub") {
+      const subs = (await storage.get("subs")) ?? [];
+      await storage.put("subs", subs.filter((x) => x.endpoint !== body.endpoint));
+      return { ok: true };
+    }
+    if (op === "push") {
+      const subs = (await storage.get("subs")) ?? [];
+      if (!subs.length) return { sent: 0 };
+      const vapid = await this.vapid();
+      const data = { title: String(body.title ?? "Jarvis").slice(0, 80), body: String(body.body ?? "").slice(0, 400), url: "/panel" };
+      const results = await Promise.all(subs.map((sub) => sendPush(sub, data, vapid, PUSH_SUBJECT, this.pushFetch ?? fetch).catch(() => 0)));
+      const alive = subs.filter((_, i) => results[i] !== 404 && results[i] !== 410);   // silinmiş abonelikler bırakılır
+      if (alive.length !== subs.length) await storage.put("subs", alive);
+      return { sent: results.filter((r) => r >= 200 && r < 300).length };
     }
     if (op === "status") {
       return { paired: Boolean(await storage.get("token")), online: this.sockets().length > 0 };
@@ -277,7 +337,8 @@ export class PcHub {
     if (!(await this.authorized(request))) return json({ error: "yetkisiz" }, 401);
     this.closeAll(4000, "yeni bağlantı");   // aynı bilgisayar yeniden bağlandıysa eski bağlantı bırakılır
     const pair = new WebSocketPair();
-    this.state.acceptWebSocket(pair[1]);
+    this.state.acceptWebSocket(pair[1], ["pc"]);
+    this.broadcast({ tip: "pc", online: true });
     if (await this.state.storage.get("announce")) {
       await this.state.storage.delete("announce");
       await telegramSend(this.env, "🖥 Bilgisayarın Jarvis'e bağlandı. Denemek için: <code>/pc</code> ya da \"bilgisayarı kilitle\". Bütün komutlar: <code>/pc yardım</code>");
@@ -296,7 +357,7 @@ export class PcHub {
     } catch {
       return;
     }
-    if (!data?.id) return;
+    if (!data?.id || !(this.state.getTags?.(ws) ?? ["pc"]).includes("pc")) return;
     const text = String(data.metin ?? "").slice(0, 3500);
     const resolve = this.waiting.get(data.id);
     if (resolve) resolve(text);
@@ -305,6 +366,41 @@ export class PcHub {
 
   async webSocketClose(ws, code, reason) {
     try { ws.close(code, reason); } catch { /* zaten kapalı */ }
+    if ((this.state.getTags?.(ws) ?? []).includes("pc") && this.sockets("pc").filter((s) => s !== ws).length === 0) {
+      this.broadcast({ tip: "pc", online: false });
+    }
+  }
+
+  // Açık Jarvis uygulamalarına haber verir
+  broadcast(data) {
+    const text = JSON.stringify(data);
+    for (const ws of this.sockets("app")) {
+      try { ws.send(text); } catch { /* kapanmış */ }
+    }
+  }
+
+  async vapid() {
+    let keys = await this.state.storage.get("vapid");
+    if (!keys) {
+      keys = await makeVapidKeys();
+      await this.state.storage.put("vapid", keys);
+    }
+    return keys;
+  }
+
+  // Telefondaki uygulamanın canlı bağlantısı. Tarayıcı başlık ekleyemediği için anahtar adresle gelir (?k=).
+  async live(request) {
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json({ error: "WebSocket bekleniyordu" }, 426);
+    const key = new URL(request.url).searchParams.get("k") ?? "";
+    const real = await this.env.KV?.get(PANEL_KEY);
+    if (!key || !real || key !== real) return json({ error: "yetkisiz" }, 401);
+    const open = this.sockets("app");
+    for (const ws of open.slice(0, Math.max(0, open.length - 4))) {   // en fazla 5 açık uygulama
+      try { ws.close(4000, "çok bağlantı"); } catch { /* kapalı */ }
+    }
+    const pair = new WebSocketPair();
+    this.state.acceptWebSocket(pair[1], ["app"]);
+    return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
   async webSocketError() { /* program yeniden bağlanır */ }

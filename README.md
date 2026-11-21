@@ -95,9 +95,13 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - son mailler ve yemekhane menüsü
 - bilgisayarın açık mı (kilitle, ekran görüntüsü, uyku, ses ve müzik düğmeleriyle)
 
-- **Açmak:** Telegram'da `/panel` yaz, gelen bağlantıya dokun. Telefonda tarayıcı menüsünden **Ana ekrana ekle** dersen uygulama gibi açılır.
+- **Açmak:** Telegram'da `/panel` yaz, gelen bağlantıya dokun.
+- **iPhone uygulaması:** Bağlantıyı Safari'de aç, paylaş düğmesinden **Ana Ekrana Ekle**'yi seç. Ana ekrandaki Jarvis simgesi tam ekran açılır. İlk açılışta kod sorarsa `/panel` mesajındaki kodu gir (15 dakika geçerli). Uygulamada:
+  - **Eş zamanlı:** Telegram'a yazdığında, hatırlatma geldiğinde ya da bilgisayar açılıp kapandığında ekran hemen yenilenir (üstteki "Canlı" ışığı).
+  - **Sohbet:** "Jarvis ile konuş" kutusundan Telegram'daki gibi yazabilirsin.
+  - **Bildirimler:** "🔔 Bildirimler" düğmesine bas ve izin ver (iOS 16.4 ve üstü, yalnızca ana ekrandaki uygulamada). Jarvis'in kendiliğinden gönderdiği mesajlar (hatırlatmalar, mailde bulunan tarihler, bütçe uyarıları, fitness, ay sonu özeti) bildirim olarak da gelir. Canvas, mail ve sabah özeti bildirimleri şimdilik yalnızca Telegram'a gelir.
 - Sayfa 3 dakikada bir kendini yeniler. Canvas ödevleri 10 dakikada bir okunur.
-- **Güvenlik:** Bağlantının sonundaki gizli anahtar olmadan sayfa boş gelir ve veri okunamaz. Anahtar adresin `#` kısmında durduğu için sunucu kayıtlarına düşmez. Bağlantıyı yanlışlıkla paylaştıysan `/panel yenile` yaz; eski bağlantı çalışmaz olur. Panelden bilgisayar kapatılamaz, yalnızca kilitlenir ya da uyutulur.
+- **Güvenlik:** Bağlantının sonundaki gizli anahtar olmadan sayfa boş gelir ve veri okunamaz. Anahtar adresin `#` kısmında durduğu için sunucu kayıtlarına düşmez. Bağlantıyı yanlışlıkla paylaştıysan `/panel yenile` yaz; eski bağlantı ve uygulamadaki girişler çalışmaz olur, eski cihazlara bildirim gitmez. Panelden bilgisayar kapatılamaz, yalnızca kilitlenir ya da uyutulur.
 
 ## Komutlar
 
@@ -253,7 +257,8 @@ jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktar�
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
 worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocket)
-worker/src/panel.js           Jarvis paneli: veriler ve gizli bağlantı; sayfası panel_page.js
+worker/src/panel.js           Jarvis paneli ve iPhone uygulaması: veriler, giriş, sohbet; sayfası panel_page.js
+worker/src/webpush.js         Uygulama bildirimleri (Web Push, VAPID)
 pc/jarvis_pc.py               Windows'ta çalışan Jarvis programı (kurulum + komutlar)
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
