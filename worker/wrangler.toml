@@ -13,6 +13,15 @@ id = "__KV_ID__"   # kurulum sırasında doldurulur
 [ai]
 binding = "AI"
 
+# Bilgisayar bağlantısı: Windows'taki Jarvis programı buraya bağlanır (ücretsiz planda SQLite'lı Durable Object)
+[[durable_objects.bindings]]
+name = "PC"
+class_name = "PcHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PcHub"]
+
 [triggers]
 crons = ["*/2 * * * *"]   # 2 dakikada bir: hatırlatmalar + GitHub'daki işlerin zamanlaması
 

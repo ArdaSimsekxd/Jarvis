@@ -74,6 +74,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"butce","description":"Aylık bütçe: /butce 6000"},
   {"command":"ara","description":"İnternette ara: /ara soru"},
   {"command":"ozetle","description":"Bağlantıdaki sayfayı özetle"},
+  {"command":"pc","description":"Bilgisayarın: /pc kilitle, /pc ekran, /pc bağla"},
   {"command":"mailler","description":"Okul mailine gelen son mailler"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},

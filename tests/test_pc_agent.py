@@ -1,0 +1,66 @@
+import importlib.util
+import os
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+SPEC = importlib.util.spec_from_file_location("jarvis_pc", Path(__file__).resolve().parent.parent / "pc" / "jarvis_pc.py")
+pc = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(pc)
+
+
+class PairingTest(unittest.TestCase):
+    def test_split_pairing(self):
+        self.assertEqual(pc.split_pairing("https://jarvis.abc.workers.dev#K7P2-9QXA"), ("https://jarvis.abc.workers.dev", "K7P2-9QXA"))
+        self.assertEqual(pc.split_pairing("  https://jarvis.abc.workers.dev/#K7P29QXA \n"), ("https://jarvis.abc.workers.dev", "K7P29QXA"))
+        self.assertEqual(pc.split_pairing("http://jarvis.abc.workers.dev#K7P2-9QXA"), (None, None), "yalnızca https")
+        self.assertEqual(pc.split_pairing("rastgele yazı"), (None, None))
+
+    def test_bot_fills_and_setup_strips_the_code(self):
+        source = Path(pc.__file__).read_text(encoding="utf-8")
+        self.assertRegex(source, r'(?m)^PAIRING = ""$', "bot bu satırı doldurur (worker/src/pc.js injectPairing)")
+        filled = source.replace('PAIRING = ""', 'PAIRING = "https://x.workers.dev#ABCD-EFGH"', 1)
+        self.assertEqual(pc.strip_pairing(filled), source)
+
+
+class HelpersTest(unittest.TestCase):
+    def test_volume(self):
+        self.assertEqual(pc.volume_presses("40"), [("ses_kis", 50), ("ses_ac", 20)])
+        self.assertEqual(pc.volume_presses("0"), [("ses_kis", 50), ("ses_ac", 0)])
+        self.assertEqual(pc.volume_presses("ac"), [("ses_ac", 5)])
+        self.assertEqual(pc.volume_presses("kıs"), [("ses_kis", 5)])
+        self.assertEqual(pc.volume_presses("+10"), [("ses_ac", 5)])
+        self.assertEqual(pc.volume_presses("250"), [("ses_kis", 50), ("ses_ac", 50)])
+        self.assertIsNone(pc.volume_presses("biraz"))
+
+    def test_resolve_target(self):
+        self.assertEqual(pc.resolve_target("Spotify'ı"), ("app", "spotify:"))
+        self.assertEqual(pc.resolve_target("hesap makinesi"), ("app", "calc"))
+        self.assertEqual(pc.resolve_target("Canvas"), ("url", "https://canvas.agu.edu.tr"))
+        self.assertEqual(pc.resolve_target("https://Example.com/A?b=1"), ("url", "https://Example.com/A?b=1"))
+        self.assertEqual(pc.resolve_target("youtube.com/watch"), ("url", "https://youtube.com/watch"))
+        self.assertEqual(pc.resolve_target("oyun", {"Oyun": "C:\\Games\\oyun.exe"}), ("app", "C:\\Games\\oyun.exe"))
+        self.assertEqual(pc.resolve_target("bilinmeyen şey"), (None, None))
+        self.assertEqual(pc.resolve_target("calc & del *"), (None, None), "tanınmayan hiçbir şey çalıştırılmaz")
+
+    def test_recent_files_and_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            for i, name in enumerate(["eski.pdf", "yeni.docx", "~$gecici.docx", "kisayol.lnk"]):
+                p = Path(d) / name
+                p.write_bytes(b"x" * (i + 1) * 1500)
+                os.utime(p, (time.time() - 100 + i * 10,) * 2)
+            files = pc.recent_files([Path(d), Path(d) / "yok"])
+            self.assertEqual([Path(f).name for f, _ in files], ["yeni.docx", "eski.pdf"])
+            text = pc.format_files(files)
+            self.assertIn("1. yeni.docx (2.9 KB)", text)
+            self.assertIn("/pc dosya 1", text)
+        self.assertIn("bulamadım", pc.format_files([]))
+
+    def test_unknown_job(self):
+        self.assertIn("bilmiyorum", pc.do_job({"is": "format_c"}, {}))
+        self.assertIn("O numarada dosya yok", pc.do_job({"is": "dosya", "arg": "99"}, {}) if os.name == "nt" else "O numarada dosya yok")
+
+
+if __name__ == "__main__":
+    unittest.main()
