@@ -4,7 +4,7 @@ import {
   AFAD_URL, EMSC_URL, GEO_URL, QUAKE_KEY, USGS_URL, checkQuakes, cmdDeprem, distanceKm, parseAfad, parseEmsc, parseTime, shouldAlert,
   DEFAULT_SETTINGS,
 } from "../src/quake.js";
-import { API, CARGO_KEY, SETUP as CARGO_SETUP, checkCargo, cmdKargo, parseAdd, readTrack } from "../src/cargo.js";
+import { API, CARGO_KEY, checkCargo, cmdKargo, parseAdd, readTrack, trackLink } from "../src/cargo.js";
 import { PcHub } from "../src/pc.js";
 import { PANEL_KEY, SERVICE_WORKER, cmdBul, handlePanel } from "../src/panel.js";
 import { toSteps } from "../src/brain.js";
@@ -138,8 +138,29 @@ test("kargo: numara ve firma ayrıştırma", () => {
   assert.equal(readTrack({ track_info: { tracking: { providers: [{ events: [{ description: "Çıkış şubesinde" }] }] } } }).event, "Çıkış şubesinde");
 });
 
-test("kargo: anahtar yoksa kurulum anlatılır, numara kaydedilir ve listelenir", async () => {
-  assert.equal(await cmdKargo("", fakeCtx()), CARGO_SETUP);
+test("kargo: anahtarsız kayıt, bağlantı ve sabah hatırlatması", async () => {
+  const ctx = fakeCtx();
+  assert.match(await cmdKargo("", ctx), /Kayıtlı kargo yok/);
+  const added = await cmdKargo("yurtici 123456789012 kulaklık", ctx);
+  assert.match(added, /Kaydettim: <b>kulaklık<\/b> · <code>123456789012<\/code> \(Yurtiçi\)/);
+  assert.match(added, /href="https:\/\/www\.yurticikargo\.com\/tr\/online-servisler\/gonderi-sorgula\?code=123456789012"/);
+  await cmdKargo("ABC1234567890 kitap", ctx);
+  assert.equal(trackLink({ number: "ABC1234567890", carrier: null }), "https://t.17track.net/tr#nums=ABC1234567890");
+  assert.match(await cmdKargo("ABC1234567890", ctx), /zaten listede/);
+  assert.equal(ctx.calls.length, 0, "anahtarsız hiçbir servise istek gitmez");
+  ctx.now = trToMs(2026, 11, 22, 9, 58);
+  assert.equal(await checkCargo(ctx), 0);
+  ctx.now = trToMs(2026, 11, 22, 10, 0);
+  assert.equal(await checkCargo(ctx), 1);
+  assert.match(ctx.sent[0], /Yolda 2 kargon var\n1\. <b>kulaklık<\/b>.*takip<\/a>\n2\. <b>kitap<\/b>/);
+  assert.match(await cmdKargo("geldi 1", ctx), /Afiyetle kullan.*kulaklık/);
+  assert.match(await cmdKargo("", ctx), /1\. <b>kitap<\/b>[\s\S]*t\.17track\.net/);
+  ctx.now = trToMs(2026, 12, 25, 10, 0);
+  assert.equal(await checkCargo(ctx), 0, "30 günden eski kayıt düşer");
+  assert.equal(JSON.parse(ctx.kv.values.get(CARGO_KEY)).items.length, 0);
+});
+
+test("kargo (17TRACK anahtarıyla): numara kaydedilir ve izlenir", async () => {
   let info = { status: "InfoReceived", description: "Gönderi kaydı oluşturuldu", location: "İSTANBUL" };
   const routes = {
     [`${API}/register`]: () => ({ status: 200, body: { code: 0, data: { accepted: [{ number: "123456789012", carrier: 100348 }], rejected: [] } } }),

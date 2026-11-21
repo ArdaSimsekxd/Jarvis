@@ -412,7 +412,7 @@ export const HELP = [
   "/ozetle bağlantı — sayfayı okuyup özetle",
   "/panel — Jarvis paneli: her şey tek ekranda",
   "/deprem — son depremler; yakınında deprem olunca haber veririm (şehir ekle: <code>/deprem ekle İzmir</code>)",
-  "/kargo 123456789012 kulaklık — kargoyu takibe al; durumu değişince haber veririm (<code>/kargo</code> hepsi)",
+  "/kargo 123456789012 kulaklık — kargoyu kaydet; takip bağlantısı verir, her sabah hatırlatırım (<code>/kargo</code> hepsi)",
   "/bul — telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika çalar",
   "/pc — bilgisayarın (kilitle, uyku, ekran, ses, uygulama aç; ayrıntı: <code>/pc yardım</code>, ilk kez: <code>/pc bağla</code>)",
   "",

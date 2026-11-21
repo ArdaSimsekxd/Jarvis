@@ -1,6 +1,6 @@
-// Kargo takibi: takip numaraları 17TRACK'e kaydedilir (Yurtiçi, Aras, PTT, Trendyol Express, HepsiJET ve
-// yüzlerce başka firma). Bot yarım saatte bir son durumu okur; değişince Telegram'a ve telefona haber verir.
-// Anahtar yalnızca Cloudflare'deki gizli alanda (TRACK17_KEY) durur. Kargo firmasından gelen yazılar yalnızca veridir.
+// Kargo takibi. Anahtarsız (varsayılan): numaralar saklanır, firmanın takip sayfasının bağlantısı verilir ve
+// her sabah hatırlatılır. TRACK17_KEY girilirse (17TRACK API) bot yarım saatte bir durumu kendisi okur ve
+// değişince haber verir. Anahtar yalnızca Cloudflare'deki gizli alanda durur. Kargo firmasından gelen yazılar yalnızca veridir.
 import { esc, plain, trParts } from "./logic.js";
 
 export const CARGO_KEY = "kargo";
@@ -32,6 +32,19 @@ const STATUS = {
   Expired: "⌛ Uzun süredir hareket yok",
 };
 const DONE = new Set(["Delivered", "Expired"]);
+const MANUAL_KEEP_MS = 30 * 24 * 3600 * 1000;   // anahtarsız kayıtlar 30 gün sonra düşer
+const REMIND_HOUR = 10;                         // anahtarsız: her sabah 10:00'da hatırlatma
+
+// Firmanın kendi takip sayfası; bilinmeyen firmalar için 17TRACK'in herkese açık takip sayfası (firmayı kendisi bulur)
+const CARRIER_PAGES = {
+  100348: (n) => `https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code=${n}`,
+  100607: (n) => `https://kargotakip.araskargo.com.tr/mainpage.aspx?code=${n}`,
+  20111: (n) => `https://gonderitakip.ptt.gov.tr/Track/Verify?q=${n}`,
+};
+export function trackLink(it) {
+  const n = encodeURIComponent(it.number);
+  return (CARRIER_PAGES[it.carrier] ?? ((x) => `https://t.17track.net/tr#nums=${x}`))(n);
+}
 
 export const SETUP = [
   "📦 Kargo takibi için bir kere kurulum gerekiyor:",
@@ -42,10 +55,10 @@ export const SETUP = [
 ].join("\n");
 
 export const CARGO_HELP = [
-  "<code>/kargo 1234567890 kulaklık</code> takibe al (sona istersen bir ad yaz)",
+  "<code>/kargo 1234567890 kulaklık</code> kaydet (sona istersen bir ad yaz)",
   "<code>/kargo yurtici 1234567890</code> firmayı da söyle (yurtici, aras, ptt, trendyol, hepsijet)",
   "<code>/kargo</code> tüm kargolar ve son durumları",
-  "<code>/kargo sil 2</code> listeden çıkar",
+  "<code>/kargo geldi 2</code> ya da <code>/kargo sil 2</code> listeden çıkar",
 ].join("\n");
 
 const two = (n) => String(n).padStart(2, "0");
@@ -177,9 +190,41 @@ async function add(ctx, items, text) {
   return [`✅ ${firm} takipte: ${title(item)}`, ...statusLines(item), "", "Durumu değişince haber veririm (yarım saatte bir bakıyorum)."].join("\n");
 }
 
+// Anahtarsız kullanım: numaralar saklanır, takip bağlantısı verilir, her sabah hatırlatılır.
+function linkLine(it) {
+  return `🔎 <a href="${esc(trackLink(it))}">Takip sayfasını aç</a>`;
+}
+
+export function formatManual(items) {
+  if (!items.length) return ["📦 Kayıtlı kargo yok.", "", CARGO_HELP].join("\n");
+  const out = ["📦 <b>Kargolarım</b>"];
+  items.forEach((it, i) => out.push("", `${i + 1}. ${title(it)}`, linkLine(it)));
+  out.push("", "Gelince <code>/kargo geldi 1</code> yaz, listeden çıkarırım.");
+  return out.join("\n");
+}
+
+async function manual(ctx, items, text) {
+  const [first, second] = text.split(/\s+/);
+  if (!text || ["liste", "durum", "hepsi"].includes(plain(first))) return formatManual(items);
+  if (["sil", "cikar", "kaldir", "iptal", "geldi", "teslim"].includes(plain(first))) {
+    const i = /^\d+$/.test(second ?? "") ? Number(second) - 1 : items.findIndex((it) => it.number === String(second ?? "").toUpperCase());
+    if (i < 0 || i >= items.length) return `Listede böyle bir kargo yok.\n\n${formatManual(items)}`;
+    const [gone] = items.splice(i, 1);
+    await saveCargo(ctx.kv, items);
+    return `${["geldi", "teslim"].includes(plain(first)) ? "🎉 Afiyetle kullan!" : "🗑 Listeden çıkarıldı:"} ${title(gone)}`;
+  }
+  const req = parseAdd(text);
+  if (!req) return `Takip numarasını bulamadım. Örnek: <code>/kargo 123456789012 kulaklık</code>\n\n${CARGO_HELP}`;
+  if (items.some((it) => it.number === req.number)) return `Bu kargo zaten listede.\n${linkLine(items.find((it) => it.number === req.number))}`;
+  if (items.length >= MAX_ITEMS) return `En fazla ${MAX_ITEMS} kargo tutabilirim. Önce birini <code>/kargo geldi 1</code> ile çıkar.`;
+  const item = { number: req.number, carrier: req.carrier, name: req.name, manual: true, added: ctx.now };
+  await saveCargo(ctx.kv, [...items, item]);
+  return [`✅ Kaydettim: ${title(item)}`, linkLine(item), "", `Her sabah ${REMIND_HOUR}:00'da kargolarını hatırlatırım. Gelince <code>/kargo geldi ${items.length + 1}</code> yaz.`].join("\n");
+}
+
 export async function cmdKargo(args, ctx) {
-  if (!ctx.cargoKey) return SETUP;
   const items = await loadCargo(ctx.kv);
+  if (!ctx.cargoKey) return manual(ctx, items, String(args ?? "").trim());
   const text = String(args ?? "").trim();
   const [first, second] = text.split(/\s+/);
   if (!text || ["liste", "durum", "hepsi"].includes(plain(first))) {
@@ -210,7 +255,8 @@ export async function cmdKargo(args, ctx) {
 
 // Zamanlayıcı: yarım saatte bir durumları okur, değişenleri bildirir. Teslim edilenler 3 gün sonra düşer.
 export async function checkCargo(ctx) {
-  if (!ctx.cargoKey || !isCargoTurn(ctx.now)) return 0;
+  if (!ctx.cargoKey) return remindManual(ctx);
+  if (!isCargoTurn(ctx.now)) return 0;
   const items = await loadCargo(ctx.kv);
   if (!items.length) return 0;
   const keep = items.filter((it) => !(DONE.has(it.status) && it.doneAt && ctx.now - it.doneAt > DONE_KEEP_MS));
@@ -238,4 +284,20 @@ export async function checkCargo(ctx) {
   }
   if (changed) await saveCargo(ctx.kv, keep);
   return sent;
+}
+
+// Anahtarsız: her sabah bir kez bekleyen kargoları bağlantılarıyla hatırlatır; 30 günlük kayıtlar düşer.
+async function remindManual(ctx) {
+  const p = trParts(ctx.now);
+  if (p.hh !== REMIND_HOUR || p.mm >= 2) return 0;
+  const items = await loadCargo(ctx.kv);
+  if (!items.length) return 0;
+  const keep = items.filter((it) => !it.added || ctx.now - it.added < MANUAL_KEEP_MS);
+  if (keep.length !== items.length) await saveCargo(ctx.kv, keep);
+  if (!keep.length) return 0;
+  const lines = [`📦 Yolda ${keep.length} kargon var`];
+  keep.forEach((it, i) => lines.push(`${i + 1}. ${title(it)} · <a href="${esc(trackLink(it))}">takip</a>`));
+  lines.push("", "Gelen olursa <code>/kargo geldi 1</code> yaz.");
+  const ok = await ctx.send(lines.join("\n"));
+  return ok === false ? 0 : 1;
 }
