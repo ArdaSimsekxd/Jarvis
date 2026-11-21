@@ -7,7 +7,6 @@ import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
-import { CALL_URL, VOICE, alarmTick, cmdAlarm, isWakeWord, onUserMessage } from "./alarm.js";
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
 
 const REMINDER_PREFIX = "rem:";
@@ -298,19 +297,6 @@ async function cmdSil(args, ctx) {
   return `🗑 Silindi: <b>${esc(fmtDateTime(r.at))}</b> ${esc(r.text)}`;
 }
 
-async function callUser(user, text) {
-  const url = `${CALL_URL}?user=${encodeURIComponent(user)}&text=${encodeURIComponent(text.slice(0, 250))}&lang=${VOICE}&rpt=2&cc=missed`;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    await res.text().catch(() => "");
-    if (!res.ok) console.error("arama yapılamadı", res.status);
-    return res.ok;
-  } catch (err) {
-    console.error("arama servisine ulaşılamadı", err?.name);
-    return false;
-  }
-}
-
 // Bir tarih notu silinince ona bağlı hatırlatmalar da silinir.
 async function dropReminders(kv, noteId) {
   const mine = (await listReminders(kv)).filter((r) => r.ev === noteId);
@@ -335,7 +321,6 @@ async function runCommand(cmd, ctx) {
   if (["harcama", "harca", "gider"].includes(cmd.command)) return cmdHarcama(cmd.args, ctx);
   if (["harcamalar", "giderler"].includes(cmd.command)) return cmdHarcamalar(cmd.args, ctx);
   if (["butce", "bütçe"].includes(cmd.command)) return cmdButce(cmd.args, ctx);
-  if (["alarm", "uyandir"].includes(cmd.command)) return cmdAlarm(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -406,12 +391,6 @@ async function handlePhoto(message, ctx) {
 // Tek bir Telegram mesajını işler; cevabı ctx.send ile yollar.
 export async function handleMessage(message, ctx) {
   if (String(message?.chat?.id) !== String(ctx.chatId)) return; // sadece sahibine cevap ver
-  // Çalan bir alarm varsa herhangi bir mesaj onu susturur ("uyandım" yazınca başka bir şey yapılmaz).
-  const woke = await onUserMessage(ctx, message.from?.username).catch(() => null);
-  if (woke) {
-    await ctx.send(woke);
-    if (!message.photo?.length && (isWakeWord(message.text) || (!message.text && !message.voice && !message.audio))) return;
-  }
   if (message.photo?.length) return void await handlePhoto(message, ctx);
   if (message.document && !message.text) {
     const image = /^image\//.test(message.document.mime_type ?? "");
@@ -505,8 +484,6 @@ function context(env, now = Date.now()) {
       room: async () => MAX_REMINDERS - (await listReminders(env.KV)).length,
     },
     dropReminders: (noteId) => dropReminders(env.KV, noteId),
-    // Alarm araması: CallMeBot servisi Telegram'dan sesli arar ve yazıyı Türkçe okur. Kayda kullanıcı adı yazılmaz.
-    call: (user, text) => callUser(user, text),
   };
 }
 
@@ -537,7 +514,6 @@ export default {
       runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
       scanDates(c).catch((err) => console.error("tarihler okunamadı", err?.message)),
       monthlyReport(c).catch((err) => console.error("harcama özeti gönderilemedi", err?.message)),
-      alarmTick(c).catch((err) => console.error("alarm çalışmadı", err?.message)),
     ]));
   },
 };
