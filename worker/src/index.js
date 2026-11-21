@@ -7,7 +7,7 @@ import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
-import { CALL_URL, VOICE, alarmTick, cmdAlarm, isWakeWord, onUserMessage } from "./alarm.js";
+import { CALL_FAILED, CALL_URL, VOICE, alarmTick, serviceText, cmdAlarm, isWakeWord, onUserMessage } from "./alarm.js";
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
 
 const REMINDER_PREFIX = "rem:";
@@ -298,16 +298,17 @@ async function cmdSil(args, ctx) {
   return `🗑 Silindi: <b>${esc(fmtDateTime(r.at))}</b> ${esc(r.text)}`;
 }
 
+// Dönen: { ok, info } — info, servisin cevabının düz yazı hâli (yalnızca kullanıcıya gösterilir, kayda yazılmaz).
 async function callUser(user, text) {
   const url = `${CALL_URL}?user=${encodeURIComponent(user)}&text=${encodeURIComponent(text.slice(0, 250))}&lang=${VOICE}&rpt=2&cc=missed`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    await res.text().catch(() => "");
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const info = serviceText(await res.text().catch(() => ""));
     if (!res.ok) console.error("arama yapılamadı", res.status);
-    return res.ok;
+    return { ok: res.ok && !CALL_FAILED.test(info), info };
   } catch (err) {
     console.error("arama servisine ulaşılamadı", err?.name);
-    return false;
+    return { ok: false, info: "Arama servisine ulaşılamadı." };
   }
 }
 
