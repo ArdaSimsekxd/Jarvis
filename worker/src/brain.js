@@ -30,7 +30,7 @@ const NOT_UNDERSTOOD = "Bunu tam anlayamadım. Biraz daha açık yazar mısın? 
 const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
-  "harcama_ekle", "harcamalar", "harcama_sil", "butce",
+  "harcama_ekle", "harcamalar", "harcama_sil", "butce", "alarm_kur", "alarm_kapat",
 ];
 
 // Modelin cevabı bu kalıba zorlanır (JSON mode). Bütün alanlar metin: kalıp sade kalsın.
@@ -45,7 +45,7 @@ export const PLAN_SCHEMA = {
         properties: {
           ad: { type: "string", enum: ACTIONS },
           tarih: text, saat: text, bitis: text, dakika: text, gun_sayisi: text, sayi: text, metin: text, haftalik: text,
-          tutar: text, kategori: text, ay: text,
+          tutar: text, kategori: text, ay: text, tekrar: text,
         },
         required: ["ad"],
       },
@@ -105,6 +105,8 @@ Yapabildiğin işlemler:
 - {"ad":"harcamalar","ay":"YYYY-AA","kategori":""} harcamalar ve bütçe durumu. ay yalnızca bu ay değilse, kategori yalnızca tek bir tür soruluyorsa. "Bu ay yemeğe ne kadar harcadım?", "bütçem ne durumda?" gibi belirli sorularda yorum "evet".
 - {"ad":"harcama_sil","metin":"harcamada geçen kelime ya da tutar"} bir harcamayı siler ("son harcamayı sil" için metin "son")
 - {"ad":"butce","tutar":"6000"} aylık harcama bütçesini ayarlar
+- {"ad":"alarm_kur","saat":"06:00","tekrar":"her_gun|hafta_ici|tek","tarih":"YYYY-AA-GG"} sabah alarmı: o saatte kullanıcıyı Telegram'dan sesli arar ("yarın 6'da beni uyandır", "her sabah 7'de ara"). Tek seferlikse tekrar "tek" ve tarih yaz. Sadece bir şeyi hatırlatmak isteniyorsa bu değil, hatirlatma_ekle'dir.
+- {"ad":"alarm_kapat"} alarmı kapatır
 
 Kurallar:
 - Mesaj bu işlemlerle karşılanabiliyorsa islemler'e yaz ve cevap'ı boş bırak. Birden çok işlem yazabilirsin.
@@ -265,6 +267,19 @@ export function toSteps(actions, nowMs, message = "") {
       steps.push({ type: "run", read: true, command: "harcamalar", args: `${month} ${(a.kategori ?? "").replace(/[^\p{L}]/gu, "")}`.trim() });
     } else if (a.ad === "harcama_sil") {
       steps.push({ type: "spend", text: a.metin ?? "" });
+    } else if (a.ad === "alarm_kur") {
+      const at = clock(a.saat);
+      const mode = plain(a.tekrar).replace(/[^a-z]/g, "");
+      if (!at) steps.push({ type: "say", text: "Alarmı saat kaçta kurayım?" });
+      else if (mode === "hergun") steps.push({ type: "run", command: "alarm", args: at });
+      else if (mode === "haftaici") steps.push({ type: "run", command: "alarm", args: `hafta içi ${at}` });
+      else {
+        const [hh, mm] = at.split(":").map(Number);
+        const target = day ?? (today + (hh * 60 + mm) * 60000 > nowMs ? today : today + DAY);
+        steps.push({ type: "run", command: "alarm", args: `${dayArg(target)} ${at}` });
+      }
+    } else if (a.ad === "alarm_kapat") {
+      steps.push({ type: "run", command: "alarm", args: "kapat" });
     } else if (a.ad === "butce") {
       const amount = (a.tutar ?? "").replace(/[^\d.,]/g, "");
       steps.push(amount ? { type: "run", command: "butce", args: amount } : { type: "run", read: true, command: "butce", args: "" });
