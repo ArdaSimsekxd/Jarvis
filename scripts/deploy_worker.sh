@@ -23,6 +23,8 @@ fi
 [ -n "$KV" ] || fail "KV deposu oluşturulamadı. Anahtar 'Edit Cloudflare Workers' şablonuyla mı üretildi?"
 echo "::add-mask::$KV"
 sed -i "s/__KV_ID__/$KV/" worker/wrangler.toml
+# Kaldırılan alarm özelliğinden kalan kayıt (alarm saati ve Telegram kullanıcı adı) silinir; yoksa bir şey olmaz.
+cf -X DELETE "$CF/accounts/$ACCOUNT/storage/kv/namespaces/$KV/values/alarm" >/dev/null || true
 
 echo "3/6 workers.dev adresi hazırlanıyor"
 SUB=$(cf "$CF/accounts/$ACCOUNT/workers/subdomain" | jq -r '.result.subdomain // empty')
