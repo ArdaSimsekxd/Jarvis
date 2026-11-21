@@ -39,6 +39,8 @@ Aklında tutmak istediğin her şeyi Jarvis'e bırakabilirsin, sonra normal cüm
 - **Sormak:** "Ahmet'in doğum günü ne zamandı?", "staj ile ilgili ne kaydetmiştim?"
 - **Silmek:** "Dolap notunu hafızadan sil" (önce onay ister) ya da `/hafiza sil 12`
 
+**Mail ve duyurulardaki tarihler:** Yeni gelen okul maillerine ve Canvas duyurularına 10 dakikada bir bakar. İçlerinde ileri tarihli bir olay (sınav, son başvuru, etkinlik, toplantı) varsa onu hafızaya kaydeder, **3 gün, 1 gün ve 2 saat önce** hatırlatır ve sana "Mailde tarih buldum" diye haber verir. Saat yazmıyorsa hatırlatmalar o günlerin sabahı 09:00'da gelir; gece 00:00-07:00 arasına düşen hatırlatma önceki akşam 23:30'a alınır. Canvas ödevlerinin teslim tarihlerini almaz, onlar zaten ayrıca hatırlatılıyor. Yapay zekâ yanlış bir tarih bulduysa haber mesajındaki `/hafiza sil 12` komutu notu ve hatırlatmalarını birlikte siler. Yaklaşanları görmek için: `/tarihler`. Son 3 günden eski mail ve duyurulara bakmaz.
+
 En fazla 300 not saklanır. Fotoğrafların kendisi Telegram'da kalır; botun kendi Cloudflare hesabında yalnızca yazıların ve fotoğrafın Telegram kimliği durur. Şifre gibi çok hassas bilgileri kaydetmeden önce bunu düşün: sorduğunda notların cevap için Cloudflare'in yapay zekâsına gider.
 
 ## Komutlar
@@ -60,6 +62,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/sil 2` | Listedeki 2 numaralı hatırlatmayı siler |
 | `/not metin` | Metni hafızaya kaydeder |
 | `/hafiza` | Hafızaya son kaydedilenler; `/hafiza staj` içinde "staj" geçenleri, `/hafiza 12` 12 numaralı notu (fotoğrafsa fotoğrafıyla) gösterir, `/hafiza sil 12` siler |
+| `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.

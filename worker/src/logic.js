@@ -402,6 +402,7 @@ export const HELP = [
   "",
   "/hafiza — hafızana kaydettiklerin (ayrıntı: <code>/hafiza yardim</code>)",
   "/not Ahmet'in doğum günü 3 Mart — hafızana kaydet",
+  "/tarihler — mail ve duyurulardan bulduğum yaklaşan tarihler",
   "",
   "/mailler — okul mailine gelen son mailler (ya da: <code>/mailler 1</code>, <code>/mailler burs</code>)",
   "",

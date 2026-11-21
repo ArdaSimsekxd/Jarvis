@@ -22,7 +22,7 @@ const STOP = new Set([
   "misin", "soyle", "soylemistim", "demistim", "yazmistim", "attigim", "gonderdigim", "fotograf", "fotografi", "resim",
 ]);
 
-export const ICONS = { not: "📝", link: "🔗", foto: "📸" };
+export const ICONS = { not: "📝", link: "🔗", foto: "📸", tarih: "📅" };
 
 export async function loadMemory(kv) {
   try {
@@ -43,32 +43,40 @@ export function makeNote(fields, nowMs) {
   if (fields.file) note.file = String(fields.file);
   if (fields.url) note.url = String(fields.url).slice(0, 500);
   if (fields.title) note.title = clip(fields.title, 200);
+  if (fields.day) note.day = String(fields.day).slice(0, 10);       // tarih notları: olayın günü (YYYY-AA-GG)
   return note;
 }
 
-// Notu hafızaya ekler; eklenen notu (kimliğiyle) ya da hafıza doluysa null döndürür.
+// Notları hafızaya ekler; eklenen notları (kimlikleriyle) ya da hafıza doluysa null döndürür.
 // careful: aynı anda gelen birkaç kayıtta (ör. fotoğraf albümü) biri ötekinin üstüne yazmasın diye
-// kayıttan sonra bir süre bekleyip notun yerinde olduğuna bakar, yoksa yeniden ekler.
-export async function addNote(kv, note, { careful = false, wait = sleep } = {}) {
-  let saved = null;
+// kayıttan sonra bir süre bekleyip notların yerinde olduğuna bakar, eksik kalanı yeniden ekler.
+export async function addNotes(kv, notes, { careful = false, wait = sleep } = {}) {
+  let saved = notes.map(() => null);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const mem = await loadMemory(kv);
-    const mine = saved && mem.notes.find((n) => n.id === saved.id && n.at === saved.at && n.text === saved.text);
-    if (mine) return mine;
-    if (mem.notes.length >= MAX_NOTES) return null;
-    saved = { id: mem.notes.reduce((max, n) => Math.max(max, n.id), 0) + 1, ...note };
+    saved = saved.map((s) => s && (mem.notes.find((n) => n.id === s.id && n.at === s.at && n.text === s.text) ?? null));
+    if (attempt > 0 && saved.every(Boolean)) return saved;
+    const missing = saved.filter((s) => !s).length;
+    if (mem.notes.length + missing > MAX_NOTES) return saved.some(Boolean) ? saved.filter(Boolean) : null;
+    let next = mem.notes.reduce((max, n) => Math.max(max, n.id), 0) + 1;
+    const fresh = saved.map((s, i) => s ?? { id: next++, ...notes[i] });
     try {
-      await kv.put(MEMORY_KEY, JSON.stringify({ notes: [...mem.notes, saved] }));
+      await kv.put(MEMORY_KEY, JSON.stringify({ notes: [...mem.notes, ...fresh.filter((n, i) => !saved[i])] }));
     } catch (err) {
       console.error("hafızaya yazılamadı", err?.message);
-      saved = null;
       await wait(RETRY_MS + Math.floor(Math.random() * 400));
       continue;
     }
+    saved = fresh;
     if (!careful) return saved;
     await wait(RETRY_MS + Math.floor(Math.random() * 400));
   }
-  return saved;
+  return saved.some(Boolean) ? saved.filter(Boolean) : null;
+}
+
+export async function addNote(kv, note, options) {
+  const saved = await addNotes(kv, [note], options);
+  return saved?.[0] ?? null;
 }
 
 export async function removeNote(kv, id) {
@@ -132,9 +140,11 @@ export function pickNotes(notes, query) {
   return kept.sort((a, b) => a.at - b.at || a.id - b.id);
 }
 
+const KIND_LABEL = { foto: "(fotoğraf)", link: "(bağlantı)", tarih: "(mail ya da duyurudan bulunan tarih)", not: "(not)" };
+
 // Yapay zekâya giden düz yazı hâli
 export function noteData(note) {
-  const parts = [`[#${note.id}] ${fmtDateTime(note.at)} ${note.kind === "foto" ? "(fotoğraf)" : note.kind === "link" ? "(bağlantı)" : "(not)"}`];
+  const parts = [`[#${note.id}] ${fmtDateTime(note.at)} ${KIND_LABEL[note.kind] ?? "(not)"}`];
   if (note.text) parts.push(note.text);
   if (note.title) parts.push(`Sayfa başlığı: ${note.title}`);
   if (note.url && !String(note.text).includes(note.url)) parts.push(`Adres: ${note.url}`);
@@ -193,7 +203,9 @@ export async function cmdHafiza(args, ctx) {
   const del = /^sil\s+#?(\d+)$/i.exec(s);
   if (del) {
     const gone = await removeNote(ctx.kv, +del[1]);
-    return gone ? `🗑 Hafızadan silindi: <b>#${gone.id}</b> ${esc(short(gone, 80))}` : `#${del[1]} numaralı bir not yok. Liste için: /hafiza`;
+    if (!gone) return `#${del[1]} numaralı bir not yok. Liste için: /hafiza`;
+    const dropped = gone.kind === "tarih" && ctx.dropReminders ? await ctx.dropReminders(gone.id) : 0;
+    return `🗑 Hafızadan silindi: <b>#${gone.id}</b> ${esc(short(gone, 80))}${dropped ? `\n${dropped} hatırlatması da iptal edildi.` : ""}`;
   }
 
   const one = /^#?(\d+)$/.exec(s);
