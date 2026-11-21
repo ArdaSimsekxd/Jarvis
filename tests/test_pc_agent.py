@@ -25,6 +25,12 @@ class PairingTest(unittest.TestCase):
 
 
 class HelpersTest(unittest.TestCase):
+    def test_user_agent_is_not_pythons_default(self):
+        # Cloudflare "Python-urllib" tanıtımıyla gelen istekleri 403 ile engelliyor
+        self.assertTrue(pc.USER_AGENT.startswith("JarvisPC/"))
+        source = Path(pc.__file__).read_text(encoding="utf-8")
+        self.assertEqual(source.count("urllib.request.Request("), source.count('"User-Agent": USER_AGENT'))
+
     def test_volume(self):
         self.assertEqual(pc.volume_presses("40"), [("ses_kis", 50), ("ses_ac", 20)])
         self.assertEqual(pc.volume_presses("0"), [("ses_kis", 50), ("ses_ac", 0)])
