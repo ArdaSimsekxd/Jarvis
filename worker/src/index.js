@@ -9,6 +9,7 @@ import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./mem
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
 import { PC_FILE, cmdPc } from "./pc.js";
+import { cmdPanel, handlePanel } from "./panel.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -328,6 +329,7 @@ async function runCommand(cmd, ctx) {
   if (["ara", "internet", "google"].includes(cmd.command)) return cmdAra(cmd.args, ctx);
   if (["ozetle", "özetle", "oku"].includes(cmd.command)) return cmdOzetle(cmd.args, ctx);
   if (["pc", "bilgisayar"].includes(cmd.command)) return cmdPc(cmd.args, ctx);
+  if (["panel"].includes(cmd.command)) return cmdPanel(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -526,6 +528,11 @@ function context(env, now = Date.now(), origin = null) {
       },
     } : null,
     sendDocument: (name, text, caption) => sendDocument(env, name, text, caption),
+    // Panel verileri için kısa süreli depo (Durable Object'te durur)
+    cache: env.PC ? {
+      get: async (name) => (await pcCall(env, "cget", { name })).value ?? null,
+      put: (name, value, ttl) => pcCall(env, "cput", { name, value, ttl }),
+    } : null,
   };
 }
 
@@ -535,6 +542,17 @@ export default {
     // Bilgisayardaki program: eşleştirme, bağlantı ve dosya gönderme (kimlik kontrolünü PcHub yapar)
     if (["/pc/pair", "/pc/connect", "/pc/upload"].includes(url.pathname)) {
       return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
+    }
+    // Jarvis paneli: sayfa herkese açık ama boş; veriler yalnızca gizli anahtarla okunur
+    if (url.pathname === "/panel" || url.pathname.startsWith("/panel/")) {
+      const c = context(env, Date.now(), url.origin);
+      const src = {
+        canvas: () => canvasData(c),
+        reminders: () => listReminders(env.KV),
+        names: () => courseNames(c),
+        menu: () => c.fetchMenu(),
+      };
+      return (await handlePanel(request, c, src)) ?? new Response("yok", { status: 404 });
     }
     if (request.method !== "POST" || url.pathname !== "/telegram") return new Response("Jarvis", { status: 200 });
     // Telegram her isteğe kurulumda verdiğimiz gizli değeri ekler; yoksa istek Telegram'dan değildir.

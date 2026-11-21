@@ -85,6 +85,20 @@ Güvenlik:
 
 Kendi uygulamanı eklemek için `%LOCALAPPDATA%\Jarvis\config.json` içindeki `"uygulamalar"` bölümüne `"oyun": "C:\\Games\\oyun.exe"` gibi bir satır yaz. Başlat menüsündeki uygulamaları zaten adıyla açabilir.
 
+## Jarvis paneli
+
+Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
+- bugünün dersleri (bittiyse sıradaki gün)
+- bekleyen ve geciken ödevler (geri sayımla)
+- mail ve duyurulardan bulunan tarihler, hatırlatmalar ve fitness randevuları
+- bu ayın harcaması ve bütçe göstergesi
+- son mailler ve yemekhane menüsü
+- bilgisayarın açık mı (kilitle, ekran görüntüsü, uyku, ses ve müzik düğmeleriyle)
+
+- **Açmak:** Telegram'da `/panel` yaz, gelen bağlantıya dokun. Telefonda tarayıcı menüsünden **Ana ekrana ekle** dersen uygulama gibi açılır.
+- Sayfa 3 dakikada bir kendini yeniler. Canvas ödevleri 10 dakikada bir okunur.
+- **Güvenlik:** Bağlantının sonundaki gizli anahtar olmadan sayfa boş gelir ve veri okunamaz. Anahtar adresin `#` kısmında durduğu için sunucu kayıtlarına düşmez. Bağlantıyı yanlışlıkla paylaştıysan `/panel yenile` yaz; eski bağlantı çalışmaz olur. Panelden bilgisayar kapatılamaz, yalnızca kilitlenir ya da uyutulur.
+
 ## Komutlar
 
 Telegram'da Jarvis botuna yazılır:
@@ -110,6 +124,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
 | `/ara yarın Kayseri Ankara otobüs` | İnternette arar, kaynaklı kısa cevap yazar (`TAVILY_API_KEY` gerekir) |
 | `/ozetle https://...` | Bağlantıdaki sayfayı okuyup özetler; arkasına soru da yazılabilir |
+| `/panel` | Jarvis panelinin özel bağlantısı; `/panel yenile` bağlantıyı değiştirir |
 | `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; ilk kez `/pc bağla` |
 | `/yardim` | Komut listesi |
 
@@ -238,6 +253,7 @@ jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktar�
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
 worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocket)
+worker/src/panel.js           Jarvis paneli: veriler ve gizli bağlantı; sayfası panel_page.js
 pc/jarvis_pc.py               Windows'ta çalışan Jarvis programı (kurulum + komutlar)
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)

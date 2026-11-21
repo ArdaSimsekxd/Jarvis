@@ -218,6 +218,18 @@ export class PcHub {
       this.closeAll(4001, "bağlantı kaldırıldı");
       return { paired: had };
     }
+    // Panelin verileri için kısa süreli depo (KV'nin günlük yazma ve listeleme sınırlarını harcamasın)
+    if (op === "cget") {
+      const hit = await storage.get(`cache:${body.name}`);
+      return hit && hit.exp > Date.now() ? { value: hit.value } : {};
+    }
+    if (op === "cput") {
+      await storage.put(`cache:${body.name}`, { value: body.value, exp: Date.now() + Number(body.ttl) * 1000 });
+      return { ok: true };
+    }
+    if (op === "status") {
+      return { paired: Boolean(await storage.get("token")), online: this.sockets().length > 0 };
+    }
     if (op === "send") {
       if (!(await storage.get("token"))) return { paired: false };
       const ws = this.sockets().at(-1);
