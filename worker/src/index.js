@@ -8,6 +8,9 @@ import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
+import { PC_FILE, cmdPc } from "./pc.js";
+
+export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
 
 const REMINDER_PREFIX = "rem:";
@@ -324,6 +327,7 @@ async function runCommand(cmd, ctx) {
   if (["butce", "bütçe"].includes(cmd.command)) return cmdButce(cmd.args, ctx);
   if (["ara", "internet", "google"].includes(cmd.command)) return cmdAra(cmd.args, ctx);
   if (["ozetle", "özetle", "oku"].includes(cmd.command)) return cmdOzetle(cmd.args, ctx);
+  if (["pc", "bilgisayar"].includes(cmd.command)) return cmdPc(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -451,9 +455,32 @@ export async function runSchedule(ctx) {
   return started;
 }
 
-function context(env, now = Date.now()) {
+// Bilgisayar bağlantısını tutan Durable Object'e bir iş gönderir.
+async function pcCall(env, op, body = {}) {
+  const stub = env.PC.get(env.PC.idFromName("pc"));
+  const res = await stub.fetch(`https://pc/internal/${op}`, { method: "POST", body: JSON.stringify(body) });
+  return res.json();
+}
+
+// Telegram'a dosya gönderir (bilgisayar kurulum dosyası için)
+async function sendDocument(env, name, text, caption) {
+  const form = new FormData();
+  form.append("chat_id", String(env.TELEGRAM_CHAT_ID));
+  form.append("caption", caption.slice(0, 1000));
+  form.append("document", new Blob([text], { type: "text/x-python" }), name);
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendDocument`, { method: "POST", body: form });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function context(env, now = Date.now(), origin = null) {
   return {
     now,
+    origin,
+    repo: env.GITHUB_REPO,
     chatId: env.TELEGRAM_CHAT_ID,
     kv: env.KV,
     send: sender(env),
@@ -490,12 +517,25 @@ function context(env, now = Date.now()) {
     // İnternette arama (Tavily). Anahtar yalnızca Cloudflare'deki gizli alanda durur.
     webKey: env.TAVILY_API_KEY || null,
     webFetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10000) }),
+    // Bilgisayar bağlantısı (Windows'taki Jarvis programı)
+    pc: env.PC ? {
+      call: (op, body) => pcCall(env, op, body),
+      file: async () => {
+        const res = await fetch(`https://raw.githubusercontent.com/${env.GITHUB_REPO}/main/${PC_FILE}`, { signal: AbortSignal.timeout(8000) });
+        return res.ok ? res.text() : null;
+      },
+    } : null,
+    sendDocument: (name, text, caption) => sendDocument(env, name, text, caption),
   };
 }
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // Bilgisayardaki program: eşleştirme, bağlantı ve dosya gönderme (kimlik kontrolünü PcHub yapar)
+    if (["/pc/pair", "/pc/connect", "/pc/upload"].includes(url.pathname)) {
+      return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
+    }
     if (request.method !== "POST" || url.pathname !== "/telegram") return new Response("Jarvis", { status: 200 });
     // Telegram her isteğe kurulumda verdiğimiz gizli değeri ekler; yoksa istek Telegram'dan değildir.
     if (!env.WEBHOOK_SECRET || request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET) {
@@ -507,7 +547,7 @@ export default {
     } catch { /* bozuk istek: aşağıda yine "ok" denir */ }
     // Cevap arka planda hazırlanır; Telegram'a hemen "ok" denir ki yapay zekâ düşünürken aynı mesajı yeniden yollamasın.
     if (update?.message) {
-      ctx.waitUntil(handleMessage(update.message, context(env)).catch((err) => console.error("update işlenemedi", err?.message)));
+      ctx.waitUntil(handleMessage(update.message, context(env, Date.now(), url.origin)).catch((err) => console.error("update işlenemedi", err?.message)));
     }
     return new Response("ok");
   },

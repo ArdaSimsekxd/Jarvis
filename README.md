@@ -65,6 +65,26 @@ Jarvis güncel bilgi için internette arar: "yarın Kayseri'den Ankara'ya otobü
 - Soru Tavily'ye, bulunan yazılar Cloudflare'in yapay zekâsına gider. Kişisel bir şey aratmadan önce bunu düşün.
 - Cevaplar internetten geldiği için yanlış ya da eski olabilir; fiyat ve saat gibi bilgileri kaynağından kontrol et. Sayfalardaki yazılar yalnızca veri olarak okunur, içlerindeki talimatlar uygulanmaz.
 
+## Bilgisayar (Windows)
+
+Jarvis Windows bilgisayarını Telegram'dan yönetebilir: "bilgisayarı kilitle", "sesi 30 yap", "Spotify'ı aç", "ekranın fotoğrafını at", "indirilenlerdeki son dosyayı gönder" ya da `/pc kilitle`, `/pc ekran`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`. Bütün liste: `/pc yardım`.
+
+**Kurulum (bir kez):**
+1. Bilgisayarda Python yoksa [python.org/downloads](https://www.python.org/downloads/) adresinden kur. Kurulumun ilk ekranında **Add python.exe to PATH** kutusunu işaretle.
+2. Telegram'da Jarvis'e `/pc bağla` yaz. Gelen `jarvis_pc.py` dosyasını bilgisayarına indir ve çift tıkla. (Çift tıklayınca açılmazsa: sağ tık > Birlikte aç > Python.)
+3. Açılan pencerede "Kuruldu" yazınca bitti. Telegram'a "Bilgisayarın Jarvis'e bağlandı" mesajı gelir.
+
+Nasıl çalışır: Program `%LOCALAPPDATA%\Jarvis` klasörüne kopyalanır, bilgisayar her açıldığında arka planda (pencere açmadan) başlar ve Jarvis'e bağlanır. Bağlantıyı program kendisi açtığı için modemde ayar gerekmez. Bilgisayar kapalı ya da uykudayken komut gelmez; Jarvis bunu söyler.
+
+Güvenlik:
+- Program yalnızca listedeki işleri yapar, rastgele komut çalıştırmaz.
+- Dosya olarak yalnızca İndirilenler ve Masaüstündeki son dosyaları gönderebilir.
+- Kapatma ve yeniden başlatma 1 dakika sonra olur, `/pc iptal` ile durdurulur. Normal cümleyle istenince önce onay ister.
+- `/pc bağla` ile gelen dosyadaki kod tek kullanımlıktır ve 1 saat geçerlidir. Bağlantı anahtarı yalnızca bilgisayardaki `config.json` dosyasında durur; Jarvis yalnızca anahtarın özetini saklar.
+- Bağlantıyı kaldırmak için `/pc ayır`. Programı bilgisayardan silmek için `jarvis_pc.py` dosyasını yeniden açıp `kaldir` yaz.
+
+Kendi uygulamanı eklemek için `%LOCALAPPDATA%\Jarvis\config.json` içindeki `"uygulamalar"` bölümüne `"oyun": "C:\\Games\\oyun.exe"` gibi bir satır yaz. Başlat menüsündeki uygulamaları zaten adıyla açabilir.
+
 ## Komutlar
 
 Telegram'da Jarvis botuna yazılır:
@@ -90,6 +110,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
 | `/ara yarın Kayseri Ankara otobüs` | İnternette arar, kaynaklı kısa cevap yazar (`TAVILY_API_KEY` gerekir) |
 | `/ozetle https://...` | Bağlantıdaki sayfayı okuyup özetler; arkasına soru da yazılabilir |
+| `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; ilk kez `/pc bağla` |
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.
@@ -216,6 +237,8 @@ worker/src/fitness.js         Fitness randevuları (rezervasyon sitesinin API'si
 jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktarır
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
 worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
+worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocket)
+pc/jarvis_pc.py               Windows'ta çalışan Jarvis programı (kurulum + komutlar)
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
 .github/workflows/morning.yml 08:00 zamanlayıcısı
