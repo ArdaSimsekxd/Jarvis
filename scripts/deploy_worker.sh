@@ -78,7 +78,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"pc","description":"Bilgisayarın: /pc kilitle, /pc ekran, /pc bağla"},
   {"command":"deprem","description":"Son depremler ve deprem uyarısı"},
   {"command":"kargo","description":"Kargo takibi: /kargo takip-numarası"},
-  {"command":"bul","description":"Telefonumu bul (iPhone'u çaldırır)"},
+  {"command":"bul","description":"Telefonumu bul: iPhone çalar"},
   {"command":"mailler","description":"Okul mailine gelen son mailler"},
   {"command":"yemek","description":"Bugünün yemek menüsü"},
   {"command":"hatirlat","description":"Hatırlatma ekle: /hatirlat 15:00 kütüphane"},
