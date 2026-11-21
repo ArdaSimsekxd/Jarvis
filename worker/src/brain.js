@@ -27,7 +27,7 @@ const NOT_UNDERSTOOD = "Bunu tam anlayamadım. Biraz daha açık yazar mısın? 
 
 const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
-  "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil",
+  "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
 ];
 
 // Modelin cevabı bu kalıba zorlanır (JSON mode). Bütün alanlar metin: kalıp sade kalsın.
@@ -96,10 +96,11 @@ Yapabildiğin işlemler:
 - {"ad":"hafiza_kaydet","metin":"kaydedilecek bilgi"} kullanıcının sonra hatırlamak istediği bir bilgiyi, notu ya da bağlantıyı hafızaya kaydeder ("kaydet", "not al", "aklında tut", "unutma" gibi). metin'e bilgiyi kullanıcının kendi kelimeleriyle, kısaltmadan ve eksiksiz yaz; "bunu kaydet" gibi önceki mesaja işaret ediyorsa o bilgiyi önceki konuşmadan alıp yaz. Belli bir saatte haber verilmesi isteniyorsa bu değil, hatirlatma_ekle'dir.
 - {"ad":"hafiza_ara","metin":"konuyu anlatan 2-5 anahtar kelime"} kullanıcının daha önce kaydettiği notlarda, bağlantılarda ve fotoğraflarda arar. Kullanıcı daha önce kaydettiği ya da söylediği bir şeyi, kişisel bir bilgiyi (bir kişinin doğum günü, bir site, bir adres, bir fotoğraf) sorarsa kullan. Anahtar kelimelere eş anlamlılarını da ekle.
 - {"ad":"hafiza_sil","metin":"notta geçen kelimeler"} hafızadan bir notu siler
+- {"ad":"tarihler"} mail ve Canvas duyurularından bulunan yaklaşan tarihler (sınav, son başvuru, etkinlik)
 
 Kurallar:
 - Mesaj bu işlemlerle karşılanabiliyorsa islemler'e yaz ve cevap'ı boş bırak. Birden çok işlem yazabilirsin.
-- "Bu hafta beni ne bekliyor?" gibi genel sorularda gerekli hepsini yaz: dersler (gun_sayisi 7), odevler, hatirlatmalar, fitness_liste. Mail sorulmadıysa mailler'i ekleme.
+- "Bu hafta beni ne bekliyor?" gibi genel sorularda gerekli hepsini yaz: dersler (gun_sayisi 7), odevler, tarihler, hatirlatmalar, fitness_liste. Mail sorulmadıysa mailler'i ekleme.
 - Kullanıcı veriden belirli bir şey soruyorsa (ör. "yarın ilk dersim kaçta?", "en yakın ödevim hangisi?") yorum'a "evet" yaz. Listeyi olduğu gibi göstermek yeterliyse yorum'u boş bırak.
 - Gerekli bilgi eksikse (ör. hatırlatmanın saati) işlem yazma; cevap'ta tek cümleyle sor.
 - İşlem gerektirmeyen sohbet ve genel bilgi sorularında islemler boş kalır; cevap'a kısa, samimi bir Türkçe cevap yaz. Biçimlendirme işareti (*, #, _) kullanma.
@@ -127,7 +128,7 @@ export const MEMORY_SCHEMA = {
 };
 
 // Metin içinden JSON nesnesini çıkarır; olmazsa null
-function looseJson(raw) {
+export function looseJson(raw) {
   if (raw && typeof raw === "object") return raw;
   const s = String(raw ?? "");
   try {
@@ -215,7 +216,7 @@ export function toSteps(actions, nowMs, message = "") {
     } else if (a.ad === "dersler") {
       const n = Math.min(Math.max(Number.parseInt(a.gun_sayisi, 10) || 1, 1), MAX_DAYS);
       for (let i = 0; i < n; i += 1) steps.push({ type: "run", read: true, command: "dersler", args: dayArg((day ?? today) + i * DAY) });
-    } else if (["odevler", "notlar", "hatirlatmalar"].includes(a.ad)) {
+    } else if (["odevler", "notlar", "hatirlatmalar", "tarihler"].includes(a.ad)) {
       steps.push({ type: "run", read: true, command: a.ad, args: "" });
     } else if (a.ad === "mailler") {
       const n = Number.parseInt(a.sayi, 10);
@@ -336,7 +337,7 @@ async function ask(ctx, messages, options) {
 }
 
 // JSON kalıbıyla sorar; model kalıbı tutturamazsa kalıpsız bir kez daha sorar.
-async function askJson(ctx, messages, schema, maxTokens) {
+export async function askJson(ctx, messages, schema, maxTokens) {
   try {
     return await ask(ctx, messages, { schema, maxTokens });
   } catch {

@@ -6,6 +6,7 @@ import {
 import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
+import { cmdTarihler, scanDates } from "./dates.js";
 
 const REMINDER_PREFIX = "rem:";
 const MAX_REMINDERS = 100;
@@ -201,7 +202,7 @@ async function listReminders(kv) {
   do {
     const page = await kv.list({ prefix: REMINDER_PREFIX, cursor });
     for (const k of page.keys) {
-      out.push({ key: k.name, at: Number(k.name.split(":")[1]), text: k.metadata?.text ?? "" });
+      out.push({ key: k.name, at: Number(k.name.split(":")[1]), text: k.metadata?.text ?? "", ev: k.metadata?.ev ?? null });
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -295,6 +296,13 @@ async function cmdSil(args, ctx) {
   return `🗑 Silindi: <b>${esc(fmtDateTime(r.at))}</b> ${esc(r.text)}`;
 }
 
+// Bir tarih notu silinince ona bağlı hatırlatmalar da silinir.
+async function dropReminders(kv, noteId) {
+  const mine = (await listReminders(kv)).filter((r) => r.ev === noteId);
+  for (const r of mine) await kv.delete(r.key);
+  return mine.length;
+}
+
 // Tek bir komutu çalıştırır, cevap metnini döndürür. Yapay zekâ da işlerini bu komutlarla yapar.
 async function runCommand(cmd, ctx) {
   if (cmd.command === "yemek") return cmdYemek(cmd.args, ctx);
@@ -308,6 +316,7 @@ async function runCommand(cmd, ctx) {
   if (cmd.command === "sil") return cmdSil(cmd.args, ctx);
   if (["not", "kaydet"].includes(cmd.command)) return cmdNot(cmd.args, ctx);
   if (["hafiza", "hatiralar"].includes(cmd.command)) return cmdHafiza(cmd.args, ctx);
+  if (["tarihler", "tarih"].includes(cmd.command)) return cmdTarihler(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -462,6 +471,12 @@ function context(env, now = Date.now()) {
       fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15000) }),
     } : null,
     id: () => crypto.randomUUID().slice(0, 8),
+    // Mail ve duyurulardan bulunan tarihlerin hatırlatmaları (ev: bağlı olduğu hafıza notu)
+    reminders: {
+      add: (at, text, ev) => env.KV.put(reminderKey(at, crypto.randomUUID().slice(0, 8)), "1", { metadata: { text: text.slice(0, MAX_TEXT), ev } }),
+      room: async () => MAX_REMINDERS - (await listReminders(env.KV)).length,
+    },
+    dropReminders: (noteId) => dropReminders(env.KV, noteId),
   };
 }
 
@@ -490,6 +505,7 @@ export default {
       sendDueReminders(c),
       runSchedule(c),
       runFitness(c).catch((err) => console.error("fitness çalışmadı", err?.message)),
+      scanDates(c).catch((err) => console.error("tarihler okunamadı", err?.message)),
     ]));
   },
 };
