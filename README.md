@@ -55,6 +55,16 @@ En fazla 300 not saklanır. Fotoğrafların kendisi Telegram'da kalır; botun ke
 
 Harcamalar botun kendi Cloudflare deposunda, her ay için tek bir kayıtta durur. Fişi okumak için fotoğraftaki yazı Cloudflare'in yapay zekâsına gider. Yapay zekâ tutarı yanlış okuyabilir; kayıt mesajındaki tutara bir göz at.
 
+## İnternet
+
+Jarvis güncel bilgi için internette arar: "yarın Kayseri'den Ankara'ya otobüs var mı?", "dolar bugün kaç TL?", "RTX 5070 fiyatları ne kadar?" gibi sorularda arama yapar, bulduğu sayfaları okuyup kısa bir cevap yazar ve altına tıklanabilir kaynakları koyar. Bir bağlantı atıp "bunu özetle" ya da "son başvuru ne zaman?" dersen sayfayı okuyup özetler.
+
+- **Komutla:** `/ara soru` ve `/ozetle bağlantı [istek]`.
+- **Kurulum:** [tavily.com](https://app.tavily.com)'a ücretsiz üye ol (kredi kartı istemez, ayda 1.000 arama), anahtarı GitHub'da `TAVILY_API_KEY` secret'ı olarak ekle ve **Botu kur**'u çalıştır.
+- Kendi bilgilerin (ödev, ders, hafıza, harcama) için internete çıkmaz; onları botun kendisinden okur.
+- Soru Tavily'ye, bulunan yazılar Cloudflare'in yapay zekâsına gider. Kişisel bir şey aratmadan önce bunu düşün.
+- Cevaplar internetten geldiği için yanlış ya da eski olabilir; fiyat ve saat gibi bilgileri kaynağından kontrol et. Sayfalardaki yazılar yalnızca veri olarak okunur, içlerindeki talimatlar uygulanmaz.
+
 ## Komutlar
 
 Telegram'da Jarvis botuna yazılır:
@@ -78,6 +88,8 @@ Telegram'da Jarvis botuna yazılır:
 | `/harcamalar` | Bu ayın harcamaları, türlere göre toplam ve bütçe; `/harcamalar ekim`, `/harcamalar kafe` de olur |
 | `/butce 6000` | Aylık bütçeyi ayarlar; `/butce` durumu gösterir, `/butce sil` kaldırır |
 | `/tarihler` | Mail ve Canvas duyurularından bulunan yaklaşan tarihler |
+| `/ara yarın Kayseri Ankara otobüs` | İnternette arar, kaynaklı kısa cevap yazar (`TAVILY_API_KEY` gerekir) |
+| `/ozetle https://...` | Bağlantıdaki sayfayı okuyup özetler; arkasına soru da yazılabilir |
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.
@@ -151,6 +163,7 @@ Repoda **Settings > Secrets and variables > Actions > New repository secret** il
 | `CLOUDFLARE_API_TOKEN` | Cloudflare'de "Edit Cloudflare Workers" şablonuyla üretilen anahtar (isteğe bağlı, bot için) |
 | `BOOKED_USERNAME`, `BOOKED_PASSWORD` | Rezervasyon sitesindeki kullanıcı adın ve şifren (isteğe bağlı, `/fitness` için) |
 | `DERS_PROGRAMI` | Ders programın, yukarıdaki biçimde (isteğe bağlı: `/dersler`, sabah özeti ve akşam önizlemesi için) |
+| `TAVILY_API_KEY` | tavily.com'un verdiği anahtar (isteğe bağlı: internette arama ve sayfa özeti için) |
 | `DISPATCH_TOKEN` | GitHub'da üretilen, yalnızca bu repoda "Actions: Read and write" izni olan anahtar (isteğe bağlı ama önerilir: kontrollerin zamanında çalışması için) |
 
 Canvas adresi `https://canvas.agu.edu.tr` olarak ayarlı. Değiştirmek istersen aynı sayfada **Variables** sekmesine `CANVAS_BASE_URL` ekle.
@@ -202,6 +215,7 @@ worker/                       Bot: komutlara anında cevap veren Cloudflare Work
 worker/src/fitness.js         Fitness randevuları (rezervasyon sitesinin API'si)
 jarvis/recent_mail.py         Son mailleri botun deposuna (Cloudflare KV) aktarır
 worker/src/brain.js           Yapay zekâ: normal cümleleri ve sesli mesajları komutlara çevirir
+worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
 data/menu.json                Yemek menüsü
 .github/workflows/canvas.yml  10 dakikalık zamanlayıcı (Canvas + mail)
 .github/workflows/morning.yml 08:00 zamanlayıcısı

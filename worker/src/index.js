@@ -7,6 +7,7 @@ import { cmdFitness, runFitness } from "./fitness.js";
 import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
+import { cmdAra, cmdOzetle } from "./web.js";
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
 
 const REMINDER_PREFIX = "rem:";
@@ -321,6 +322,8 @@ async function runCommand(cmd, ctx) {
   if (["harcama", "harca", "gider"].includes(cmd.command)) return cmdHarcama(cmd.args, ctx);
   if (["harcamalar", "giderler"].includes(cmd.command)) return cmdHarcamalar(cmd.args, ctx);
   if (["butce", "bütçe"].includes(cmd.command)) return cmdButce(cmd.args, ctx);
+  if (["ara", "internet", "google"].includes(cmd.command)) return cmdAra(cmd.args, ctx);
+  if (["ozetle", "özetle", "oku"].includes(cmd.command)) return cmdOzetle(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -475,7 +478,7 @@ function context(env, now = Date.now()) {
       username: env.BOOKED_USERNAME,
       password: env.BOOKED_PASSWORD,
       resourceId: Number(env.FITNESS_RESOURCE_ID),
-      fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15000) }),
+      fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10000) }),
     } : null,
     id: () => crypto.randomUUID().slice(0, 8),
     // Mail ve duyurulardan bulunan tarihlerin hatırlatmaları (ev: bağlı olduğu hafıza notu)
@@ -484,6 +487,9 @@ function context(env, now = Date.now()) {
       room: async () => MAX_REMINDERS - (await listReminders(env.KV)).length,
     },
     dropReminders: (noteId) => dropReminders(env.KV, noteId),
+    // İnternette arama (Tavily). Anahtar yalnızca Cloudflare'deki gizli alanda durur.
+    webKey: env.TAVILY_API_KEY || null,
+    webFetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10000) }),
   };
 }
 
