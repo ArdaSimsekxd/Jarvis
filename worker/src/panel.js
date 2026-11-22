@@ -81,6 +81,15 @@ export function upcomingItems({ notes = [], reminders = [], fitness = [] }, nowM
   return items.sort((a, b) => a.at - b.at).slice(0, 10);
 }
 
+// Bekleyen bütün hatırlatmalar (kendi kurduğun ve mail/duyurudaki tarihlerden Jarvis'in kurduğu), silmek için anahtarıyla
+export function reminderItems(reminders = [], nowMs) {
+  return reminders
+    .filter((r) => r.at >= nowMs - 60 * 1000)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, 25)
+    .map((r) => ({ key: r.key, at: r.at, text: String(r.text ?? "").slice(0, 200), auto: Boolean(r.ev) }));
+}
+
 export function expenseSummary(month, budget, nowMs) {
   const spent = month.items.reduce((sum, it) => sum + it.amount, 0);
   const byCat = {};
@@ -167,6 +176,7 @@ export async function buildPanel(ctx, src) {
     return {
       lessons: lessonDays(ctx.schedule, now, names),
       upcoming: upcomingItems({ notes: mem.notes, reminders, fitness }, now),
+      reminders: reminderItems(reminders, now),
       expenses: expenseSummary(month, budget, now),
       mails: mailList(mails?.mails),
       menu: menuItems(menu, trToMs(p.y, p.m, p.d)),
@@ -345,6 +355,24 @@ export async function handlePanel(request, ctx, src) {
   if (path === "/panel/api" && request.method === "GET") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
     return json(await buildPanel(ctx, src));
+  }
+  // Ortak sohbet geçmişi: her cihazdaki panel açılınca ve bir şey değişince buradan okur
+  if (path === "/panel/chat" && (request.method === "GET" || request.method === "DELETE")) {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    if (!src.chatLog) return json({ log: null });
+    try {
+      if (request.method === "DELETE") await src.chatClear();
+      return json({ log: request.method === "DELETE" ? [] : await src.chatLog() });
+    } catch (err) {
+      console.error("sohbet geçmişi okunamadı", err?.message);
+      return json({ log: null });
+    }
+  }
+  if (path === "/panel/reminder" && request.method === "DELETE") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    const body = await request.json().catch(() => ({}));
+    const ok = src.dropReminder ? await src.dropReminder(String(body.key ?? "")) : false;
+    return json({ ok }, ok ? 200 : 400);
   }
   if (path === "/panel/chat" && request.method === "POST") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);

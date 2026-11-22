@@ -97,6 +97,9 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .late { color: var(--red); }
 .soon { color: var(--amber); }
 .empty { color: var(--muted); font-style: italic; }
+.mini { white-space: nowrap; flex: 0 0 auto; font: 700 10px var(--head); letter-spacing: .14em; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(63, 216, 255, .45); background: transparent; color: var(--cyan); cursor: pointer; }
+.mini.warn { color: var(--red); border-color: var(--red); }
+.rem { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .subhead { margin: 14px 0 8px; font: 600 12px var(--head); letter-spacing: .22em; color: var(--muted); }
 
 .money { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: center; }
@@ -209,6 +212,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       <section class="card"><h2>BUGÜN <span class="count" id="cLessons"></span></h2><div id="lessons"></div></section>
       <section class="card wide"><h2>ÖDEVLER <span class="count" id="cHomework"></span></h2><div id="homework"></div></section>
       <section class="card wide"><h2>YAKLAŞANLAR <span class="count" id="cUpcoming"></span></h2><div id="upcoming"></div></section>
+      <section class="card wide"><h2>HATIRLATMALAR <span class="count"><span id="cReminders"></span> <button type="button" class="mini" id="addReminder">+ EKLE</button></span></h2><div id="reminders"></div></section>
       <section class="card"><h2>BU AY HARCAMA</h2><div id="money"></div></section>
       <section class="card"><h2>SON MAİLLER</h2><div id="mails"></div></section>
       <section class="card"><h2>YEMEKHANE</h2><div id="menu"></div></section>
@@ -341,6 +345,36 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("cUpcoming").textContent = data.upcoming.length + " kayıt";
   }
 
+  // Bütün bekleyen hatırlatmalar. SİL'e iki kez dokununca silinir (yanlışlıkla silinmesin).
+  function renderReminders(data) {
+    var box = $("reminders"), ul = el("ul", "list"), list = data.reminders || [];
+    box.textContent = "";
+    $("cReminders").textContent = list.length ? list.length + " hatırlatma" : "";
+    if (!list.length) return empty(box, "Bekleyen hatırlatma yok. Eklemek için yaz: \"yarın 15:00'te kütüphaneye gitmeyi hatırlat\"");
+    list.forEach(function (r) {
+      var w = el("span", "rem");
+      w.appendChild(el("span", null, (r.auto ? "📧 " : "⏰ ") + r.text));
+      var b = el("button", "mini", "SİL");
+      b.type = "button";
+      b.addEventListener("click", function () {
+        if (!b.classList.contains("warn")) { b.classList.add("warn"); b.textContent = "EMİN MİSİN?"; return; }
+        b.disabled = true; b.textContent = "…";
+        fetch("/panel/reminder", { method: "DELETE", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ key: r.key }) })
+          .then(function (res) { if (!res.ok) throw new Error("http"); load(); })
+          .catch(function () { b.disabled = false; b.classList.remove("warn"); b.textContent = "SİL"; });
+      });
+      w.appendChild(b);
+      ul.appendChild(row(dayLabel(r.at), w, fTime.format(new Date(r.at)) + " · " + left(r.at) + (r.auto ? " · maildeki tarihten" : "")));
+    });
+    box.appendChild(ul);
+  }
+  $("addReminder").addEventListener("click", function () {
+    var input = $("chatInput");
+    input.placeholder = "Örnek: yarın 15:00'te kütüphaneye gitmeyi hatırlat";
+    input.focus();
+    input.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+
   function gauge(pct) {
     var ns = "http://www.w3.org/2000/svg", r = 50, c = 2 * Math.PI * r, svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", "0 0 120 120"); svg.setAttribute("class", "gauge");
@@ -445,7 +479,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("greet").textContent = data.greeting + ".";
     $("dotCanvas").className = "dot " + (data.canvas ? "on" : "off");
     var left = renderLessons(data);
-    renderHomework(data); renderUpcoming(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
+    renderHomework(data); renderUpcoming(data); renderReminders(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
     var late = data.homework.filter(function (h) { return h.overdue; }).length;
     var soon = data.homework.filter(function (h) { return !h.overdue && h.due - Date.now() < 3 * 864e5; }).length;
     var parts = [];
@@ -519,8 +553,28 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     history = history.slice(-40);
     try { localStorage.setItem(CHAT, JSON.stringify(history)); } catch (e) {}
   }
-  history.forEach(function (h) { bubble(h.w, h.t); });
-  if (!history.length) bubble("bot", "Merhaba efendim. Ne yapmamı istersin? Örnek: <i>bu hafta beni ne bekliyor?</i>, <i>kahveye 80 TL verdim</i>, <i>bilgisayarı kilitle</i>");
+  function drawChat() {
+    $("chatlog").textContent = "";
+    history.forEach(function (h) { bubble(h.w, h.t); });
+    if (!history.length) bubble("bot", "Merhaba efendim. Ne yapmamı istersin? Örnek: <i>bu hafta beni ne bekliyor?</i>, <i>kahveye 80 TL verdim</i>, <i>bilgisayarı kilitle</i>");
+  }
+  drawChat();
+  // Ortak geçmiş: telefondaki ve bilgisayardaki panel aynı konuşmayı görür. Cevap beklenirken dokunulmaz.
+  var pending = 0;
+  function syncChat() {
+    if (!key || pending) return;
+    fetch("/panel/chat", { headers: { Authorization: "Bearer " + key }, cache: "no-store" })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (r) {
+        if (!r || !Array.isArray(r.log) || pending) return;
+        var log = r.log.filter(function (h) { return h && (h.w === "me" || h.w === "bot") && typeof h.t === "string"; }).map(function (h) { return { w: h.w, t: h.t }; });
+        if (JSON.stringify(log) === JSON.stringify(history)) return;
+        history = log.slice(-40);
+        try { localStorage.setItem(CHAT, JSON.stringify(history)); } catch (e) {}
+        drawChat();
+      })
+      .catch(function () {});
+  }
 
   // ---------- sesli komut: kayıt tarayıcıda WAV'a (16 kHz, tek kanal) çevrilir, Jarvis yazıya çevirip cevaplar ----------
   var rec = null, recStart = 0, toggleMode = false, MAX_REC_MS = 60000;
@@ -587,6 +641,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     micState("");
     var mine = bubble("me", "🎙 …"), waiting = bubble("bot", "Dinledim, düşünüyorum…", "wait");
     $("mic").disabled = true;
+    pending++;
     fetch("/panel/voice", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "audio/wav" }, body: wav(r.chunks, r.rate) })
       .then(function (res) { if (res.status === 401) throw new Error("yetki"); return res.json(); })
       .then(function (res) {
@@ -599,7 +654,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         if (err.message === "yetki") return gate("Giriş süren dolmuş. Telegram'da /panel yazıp gelen kodu gir.");
         bubble("bot", "Jarvis'e ulaşılamadı, biraz sonra yeniden dener misin?");
       })
-      .then(function () { $("mic").disabled = false; });
+      .then(function () { $("mic").disabled = false; pending--; });
   }
   // Basılı tut: bırakınca gönderir. Kısa dokunuş: kayıt açık kalır, yeniden dokununca gönderir.
   $("mic").addEventListener("pointerdown", function (ev) {
@@ -618,6 +673,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
 
   function ask(payload, waitText) {
     var waiting = bubble("bot", waitText || "Düşünüyorum…", "wait");
+    pending++;
     return fetch("/panel/chat", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (r.status === 401) throw new Error("yetki"); return r.json(); })
       .then(function (r) {
@@ -628,7 +684,8 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         waiting.remove();
         if (err.message === "yetki") return gate("Giriş süren dolmuş. Telegram'da /panel yazıp gelen kodu gir.");
         bubble("bot", "Jarvis'e ulaşılamadı, biraz sonra yeniden dener misin?");
-      });
+      })
+      .then(function () { pending--; });
   }
   $("chatForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -774,6 +831,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         $("gate").classList.add("hidden");
         $("app").classList.remove("hidden");
         render(data);
+        syncChat();
       })
       .catch(function (err) {
         if (err.message === "yetki") return gate("Bu bağlantı artık geçerli değil. Telegram'da Jarvis'e /panel yazıp yeni bağlantıyı aç.");

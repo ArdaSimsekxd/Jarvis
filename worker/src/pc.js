@@ -6,6 +6,8 @@ import { PANEL_KEY } from "./panel.js";
 import { makeVapidKeys, sendPush, trustedEndpoint } from "./webpush.js";
 
 export const PC_FILE = "pc/jarvis_pc.py";
+const CHAT_LOG_MAX = 60;      // panel sohbetinde saklanan en fazla mesaj
+const CHAT_TEXT_MAX = 4000;
 const PAIR_TTL_MS = 60 * 60 * 1000;      // eşleştirme kodu 1 saat geçerli
 const PAIR_TRIES = 10;                   // bu kadar yanlış denemeden sonra kod silinir
 const WAIT_MS = 9000;                    // bilgisayarın cevabı için beklenen süre (Telegram cevabı 30 saniyeye sığmalı)
@@ -334,6 +336,20 @@ export class PcHub {
       await storage.delete("token");
       this.closeAll(4001, "bağlantı kaldırıldı");
       return { paired: had };
+    }
+    // Panel sohbetinin ortak geçmişi: telefondaki ve bilgisayardaki panel aynı konuşmayı görür
+    if (op === "chatget") return { log: (await storage.get("chatlog")) ?? [] };
+    if (op === "chatadd") {
+      const items = (Array.isArray(body.items) ? body.items : [])
+        .filter((x) => (x?.w === "me" || x?.w === "bot") && typeof x.t === "string" && x.t)
+        .map((x) => ({ w: x.w, t: x.t.slice(0, CHAT_TEXT_MAX), at: Date.now() }));
+      const log = [...((await storage.get("chatlog")) ?? []), ...items].slice(-CHAT_LOG_MAX);
+      await storage.put("chatlog", log);
+      return { ok: true, count: log.length };
+    }
+    if (op === "chatclear") {
+      await storage.delete("chatlog");
+      return { ok: true };
     }
     // Panelin verileri için kısa süreli depo (KV'nin günlük yazma ve listeleme sınırlarını harcamasın)
     if (op === "cget") {

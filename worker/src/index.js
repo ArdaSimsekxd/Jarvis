@@ -158,7 +158,7 @@ async function transcribeAudio(env, bytes) {
 async function appVoice(env, c, bytes, ctx) {
   const text = await transcribeAudio(env, bytes);
   if (!text) return { text: "", replies: [] };
-  return { text, replies: await appChat(env, c, text, ctx) };
+  return { text, replies: await appChat(env, c, text, ctx, null, `🎙 ${text}`) };
 }
 
 // Fotoğrafı yapay zekâya okutur: { desc, text }. Asıl model hata verirse yedek modelle bir kez daha dener.
@@ -498,7 +498,7 @@ export async function pushToApp(env, said) {
 }
 
 // Uygulamanın içinden yazılan mesaj: Telegram'daki gibi işlenir, cevaplar uygulamaya döner.
-async function appChat(env, c, text, ctx, location = null) {
+async function appChat(env, c, text, ctx, location = null, label = null) {
   const out = [];
   const chatCtx = {
     ...c,
@@ -507,6 +507,12 @@ async function appChat(env, c, text, ctx, location = null) {
     typing: async () => {},
   };
   await handleMessage(location ? { chat: { id: c.chatId }, location } : { chat: { id: c.chatId }, text }, chatCtx);
+  // Ortak sohbet geçmişi: diğer cihazdaki panel de aynı konuşmayı görür (yenile haberinden önce yazılır)
+  const mine = label ?? (location ? "🚌 Yakınımdaki otobüsler" : text);
+  if (env.PC) {
+    await pcCall(env, "chatadd", { items: [{ w: "me", t: mine }, ...(out.length ? out : ["Tamam."]).map((t) => ({ w: "bot", t }))] })
+      .catch((err) => console.error("sohbet geçmişi yazılamadı", err?.message));
+  }
   ctx?.waitUntil?.(notifyApp(env));
   return out;
 }
@@ -618,6 +624,14 @@ export default {
         menu: () => c.fetchMenu(),
         chat: (text, location) => appChat(env, c, text, ctx, location),
         voice: env.AI ? (bytes) => appVoice(env, c, bytes, ctx) : null,
+        chatLog: env.PC ? async () => (await pcCall(env, "chatget")).log ?? [] : null,
+        chatClear: env.PC ? () => pcCall(env, "chatclear") : null,
+        dropReminder: async (key) => {
+          if (!/^rem:\d{15}:[\w-]{1,40}$/.test(String(key))) return false;
+          await env.KV.delete(key);
+          await notifyApp(env);
+          return true;
+        },
       };
       return (await handlePanel(request, c, src)) ?? new Response("yok", { status: 404 });
     }

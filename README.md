@@ -99,6 +99,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - bugünün dersleri (bittiyse sıradaki gün)
 - bekleyen ve geciken ödevler (geri sayımla)
 - mail ve duyurulardan bulunan tarihler, hatırlatmalar ve fitness randevuları
+- bütün bekleyen hatırlatmalar ayrı bir kartta (SİL'e iki kez dokununca silinir, "+ EKLE" sohbet kutusuna götürür)
 - bu ayın harcaması ve bütçe göstergesi
 - son mailler ve yemekhane menüsü
 - bilgisayarın açık mı (kilitle, ekran görüntüsü, uyku, ses ve müzik düğmeleriyle)
@@ -106,7 +107,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - **Açmak:** Telegram'da `/panel` yaz, gelen bağlantıya dokun.
 - **iPhone uygulaması:** Bağlantıyı Safari'de aç, paylaş düğmesinden **Ana Ekrana Ekle**'yi seç. Ana ekrandaki Jarvis simgesi tam ekran açılır. İlk açılışta kod sorarsa `/panel` mesajındaki kodu gir (15 dakika geçerli). Uygulamada:
   - **Eş zamanlı:** Telegram'a yazdığında, hatırlatma geldiğinde ya da bilgisayar açılıp kapandığında ekran hemen yenilenir (üstteki "Canlı" ışığı).
-  - **Sohbet:** "Jarvis ile konuş" kutusundan Telegram'daki gibi yazabilirsin.
+  - **Sohbet:** "Jarvis ile konuş" kutusundan Telegram'daki gibi yazabilirsin. Konuşma telefondaki ve bilgisayardaki panelde ortaktır (son 60 mesaj); birinde yazdığını öbüründe de görürsün. Telegram'daki konuşma bu geçmişe girmez.
   - **Sesli komut:** 🎙 düğmesine basılı tut, konuş, bırak (ya da bir kez dokun, konuş, yeniden dokun). En fazla 1 dakika. Kayıt Jarvis'te yazıya çevrilir ve yazmışsın gibi cevaplanır; ses saklanmaz. İlk seferde tarayıcı mikrofon izni ister. iPhone'da izin verilmediyse: **Ayarlar > Safari > Mikrofon**.
   - **Bildirimler:** "🔔 Bildirimler" düğmesine bas ve izin ver (iOS 16.4 ve üstü, yalnızca ana ekrandaki uygulamada). Jarvis'in kendiliğinden gönderdiği mesajlar (hatırlatmalar, mailde bulunan tarihler, bütçe uyarıları, fitness, ay sonu özeti) bildirim olarak da gelir. Canvas, mail ve sabah özeti bildirimleri şimdilik yalnızca Telegram'a gelir.
 - Sayfa 3 dakikada bir kendini yeniler. Canvas ödevleri 10 dakikada bir okunur.
