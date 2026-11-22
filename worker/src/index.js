@@ -4,7 +4,7 @@ import {
   formatSchedule, fmtDate, parseCommand, parseDay, parseReminder, parseSchedule,
 } from "./logic.js";
 import { cmdFitness, runFitness } from "./fitness.js";
-import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen } from "./brain.js";
+import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, cmdKisilik, converse, parseSeen } from "./brain.js";
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
@@ -337,6 +337,7 @@ async function runCommand(cmd, ctx) {
   if (["kargo", "kargolar", "kargom"].includes(cmd.command)) return cmdKargo(cmd.args, ctx);
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
+  if (["kisilik", "kişilik", "jarvis"].includes(cmd.command)) return cmdKisilik(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
 }
@@ -589,8 +590,8 @@ export default {
       return env.PC.get(env.PC.idFromName("pc")).fetch(new Request(request, { headers }));
     }
     // Jarvis paneli: sayfa herkese açık ama boş; veriler yalnızca gizli anahtarla okunur
-    // Telefondaki uygulamanın canlı bağlantısı (anahtar kontrolünü PcHub yapar)
-    if (url.pathname === "/panel/live") {
+    // Telefondaki uygulamanın canlı bağlantısı ve bilgisayardan gelen dosyalar (anahtar kontrolünü PcHub yapar)
+    if (url.pathname === "/panel/live" || url.pathname.startsWith("/panel/file/")) {
       return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
     }
     if (url.pathname === "/panel" || url.pathname.startsWith("/panel/")) {

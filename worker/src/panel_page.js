@@ -113,6 +113,7 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .toast { min-height: 22px; margin-top: 10px; color: var(--cyan); font-size: 15px; }
 
 .card.full { grid-column: 1 / -1; }
+.dl { display: inline-block; margin-top: 4px; padding: 4px 12px; border: 1px solid var(--cyan); border-radius: 3px; font: 600 13px var(--head); letter-spacing: .14em; }
 .chatlog { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; margin-bottom: 10px; }
 .msg { max-width: 88%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; }
 .msg.me { align-self: flex-end; background: rgba(63, 216, 255, .16); border: 1px solid var(--line); }
@@ -213,6 +214,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         </div>
         <div class="toast" id="toast"></div>
       </section>
+      <section class="card"><h2>DOSYALAR <span class="count" id="cFiles"></span></h2><div id="files"></div></section>
     </main>
     <footer id="foot"></footer>
   </div>
@@ -400,6 +402,25 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     box.appendChild(ul);
   }
 
+  function size(n) { return n >= 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  function renderFiles(data) {
+    var box = $("files"), ul = el("ul", "list"), files = data.files || [];
+    box.textContent = "";
+    $("cFiles").textContent = files.length ? String(files.length) : "";
+    if (!files.length) return empty(box, "Bilgisayardan dosya istemek için yaz: \"bilgisayardan devre raporunu getir\"");
+    files.forEach(function (f) {
+      var w = el("span");
+      w.appendChild(el("span", null, f.name));
+      if (/^\/panel\/file\/[0-9a-f]+\?t=[\w-]+$/.test(f.url)) {
+        var a = el("a", "dl", "İNDİR");
+        a.href = f.url; a.target = "_blank"; a.rel = "noopener";
+        w.appendChild(el("br")); w.appendChild(a);
+      }
+      ul.appendChild(row(left(f.exp).replace(" geçti", "") + " kaldı", w, size(f.size)));
+    });
+    box.appendChild(ul);
+  }
+
   var pcOnline = false;
   function renderPc(data) {
     var pc = data.pc, dot = $("pcDot"), text = $("pcText");
@@ -414,7 +435,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("greet").textContent = data.greeting + ".";
     $("dotCanvas").className = "dot " + (data.canvas ? "on" : "off");
     var left = renderLessons(data);
-    renderHomework(data); renderUpcoming(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data);
+    renderHomework(data); renderUpcoming(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
     var late = data.homework.filter(function (h) { return h.overdue; }).length;
     var soon = data.homework.filter(function (h) { return !h.overdue && h.due - Date.now() < 3 * 864e5; }).length;
     var parts = [];
@@ -528,6 +549,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       var d = {};
       try { d = JSON.parse(ev.data); } catch (e) { return; }
       if (d.tip === "yenile") load();
+      if (d.tip === "dosya") { load(); $("foot").textContent = "📄 " + String(d.name || "Dosya") + " hazır: Dosyalar bölümünden indir."; }
       if (d.tip === "bulundu") $("foot").textContent = "📱 Telefon bulundu, bildirimler durdu.";
       if (d.tip === "pc") renderPc({ pc: { paired: true, online: d.online } });
     };

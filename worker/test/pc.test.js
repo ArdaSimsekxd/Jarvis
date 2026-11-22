@@ -319,3 +319,66 @@ test("bağlantıya yaklaşık yer eklenir, programın gönderdiği sahte başlı
   assert.equal(JSON.parse(decodeURIComponent(seen[0])).ip, "203.0.113.9");
   assert.equal(seen[1], null);
 });
+
+test("dosya getir: komut ve yapay zekâ", () => {
+  assert.deepEqual(parsePc("getir Devre Raporu"), { job: { is: "getir", arg: "Devre Raporu" } });
+  assert.deepEqual(parsePc("getir 2"), { job: { is: "getir", arg: "2" } });
+  assert.match(parsePc("getir").say, /Hangi dosyayı/);
+  assert.deepEqual(toSteps([{ ad: "bilgisayar", metin: "getir ödev raporu" }], NOW, "bilgisayardaki ödev raporunu getir"),
+    [{ type: "private", label: "bilgisayar", command: "pc", args: "getir ödev raporu" }]);
+});
+
+test("dosya getir: bilgisayardan gelen dosya panelde 1 saat indirilir", async () => {
+  const { state, hub, token } = await pairedHub();
+  hub.fileChunk = 4;
+  const auth = (name) => ({ Authorization: `Bearer ${token}`, "X-Tur": "panel", "X-Ad": encodeURIComponent(name) });
+  const app = { tags: ["app"], sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+  state.sockets.push(app);
+  assert.equal((await hub.fetch(post("/pc/upload", "x", { ...auth("a.pdf"), Authorization: "Bearer yanlis" }))).status, 401);
+  const res = await hub.fetch(post("/pc/upload", "abcdefghij", auth("Devre Raporu ğ.pdf")));
+  assert.equal(res.status, 200);
+  assert.deepEqual(app.sent.at(-1), { tip: "dosya", name: "Devre Raporu ğ.pdf" });
+  const meta = state.data.get("files")[0];
+  assert.equal(meta.n, 3, "parçalara bölündü");
+  const { files } = await internal(hub, "files");
+  assert.equal(files.length, 1);
+  assert.equal(files[0].size, 10);
+  assert.match(files[0].url, /^\/panel\/file\/[0-9a-f]{24}\?t=[\w-]{40,}$/);
+  assert.equal(files[0].token, undefined, "anahtar yalnızca bağlantının içinde");
+
+  const got = await hub.fetch(new Request(`https://j.example${files[0].url}`));
+  assert.equal(got.status, 200);
+  assert.equal(await got.text(), "abcdefghij");
+  assert.equal(got.headers.get("Content-Type"), "application/pdf");
+  assert.match(got.headers.get("Content-Disposition"), /^inline; filename="Devre Raporu _\.pdf"; filename\*=UTF-8''Devre%20Raporu%20%C4%9F\.pdf$/);
+  assert.equal(got.headers.get("X-Content-Type-Options"), "nosniff");
+  const bad = await hub.fetch(new Request(`https://j.example/panel/file/${files[0].id}?t=yanlis`));
+  assert.equal(bad.status, 404);
+
+  // HTML gibi dosyalar tarayıcıda açılmaz, indirilir
+  await hub.fetch(post("/pc/upload", "<script>x</script>", auth("sayfa.html")));
+  const html = (await internal(hub, "files")).files.find((f) => f.name === "sayfa.html");
+  const page = await hub.fetch(new Request(`https://j.example${html.url}`));
+  assert.equal(page.headers.get("Content-Type"), "application/octet-stream");
+  assert.match(page.headers.get("Content-Disposition"), /^attachment;/);
+
+  // En fazla 3 dosya: en eskisi silinir
+  await hub.fetch(post("/pc/upload", "1", auth("b.txt")));
+  await hub.fetch(post("/pc/upload", "2", auth("c.txt")));
+  const names = (await internal(hub, "files")).files.map((f) => f.name);
+  assert.deepEqual(names, ["sayfa.html", "b.txt", "c.txt"]);
+  assert.equal(state.data.has(`file:${meta.id}:0`), false, "eski dosyanın parçaları silindi");
+
+  // Süresi dolunca
+  for (const f of state.data.get("files")) f.exp = Date.now() - 1;
+  assert.deepEqual((await internal(hub, "files")).files, []);
+  assert.equal([...state.data.keys()].filter((k) => k.startsWith("file:")).length, 0);
+});
+
+test("panel dosya bağlantısını Durable Object'e yönlendirir", async () => {
+  const seen = [];
+  const env = { PC: { idFromName: (n) => n, get: () => ({ fetch: async (req) => { seen.push(new URL(req.url).pathname); return new Response("dosya"); } }) } };
+  const r = await worker.fetch(new Request("https://j.example/panel/file/abc?t=x"), env, {});
+  assert.equal(await r.text(), "dosya");
+  assert.deepEqual(seen, ["/panel/file/abc"]);
+});

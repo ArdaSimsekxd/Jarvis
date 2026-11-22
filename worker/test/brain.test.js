@@ -280,3 +280,21 @@ test("mailler normal cümleyle sorulur", async () => {
   await handleMessage(msg("/mail"), empty);
   assert.match(empty.sent.pop(), /Henüz mail bilgisi yok/);
 });
+
+test("Jarvis kişiliği: varsayılan açık, kapatılabilir, komutlar değişmez", async () => {
+  const { PERSONA, PERSONA_KEY, cmdKisilik, personaOn } = await import("../src/brain.js");
+  const store = new Map();
+  const kv = { get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); }, delete: async (k) => { store.delete(k); } };
+  assert.equal(await personaOn(kv), true);
+  assert.match(plannerPrompt(NOW, [], true), /Konuşma tarzın/);
+  assert.doesNotMatch(plannerPrompt(NOW, [], false), /Konuşma tarzın/);
+  assert.match(PERSONA, /Kötü bir haberde .* espri yapma/);
+  assert.match(await cmdKisilik("", { kv }), /açık/);
+  assert.match(await cmdKisilik("kapat", { kv }), /esprisiz/);
+  assert.equal(store.get(PERSONA_KEY), "kapali");
+  assert.equal(await personaOn(kv), false);
+  assert.match(await cmdKisilik("aç", { kv }), /efendim/);
+  assert.equal(await personaOn(kv), true);
+  assert.deepEqual(toSteps([{ ad: "kisilik", metin: "kapat" }], NOW, "espri yapma artık"), [{ type: "run", command: "kisilik", args: "kapat" }]);
+  assert.deepEqual(toSteps([{ ad: "kisilik", metin: "ac" }], NOW, "yine jarvis gibi konuş"), [{ type: "run", command: "kisilik", args: "ac" }]);
+});

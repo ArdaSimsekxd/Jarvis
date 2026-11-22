@@ -10,7 +10,19 @@ const PAIR_TTL_MS = 60 * 60 * 1000;      // eşleştirme kodu 1 saat geçerli
 const PAIR_TRIES = 10;                   // bu kadar yanlış denemeden sonra kod silinir
 const WAIT_MS = 9000;                    // bilgisayarın cevabı için beklenen süre (Telegram cevabı 30 saniyeye sığmalı)
 const SLOW_WAIT_MS = 15000;              // ekran görüntüsü gibi yavaş işler için
-const SLOW_JOBS = ["ekran", "kamera", "konum"];
+const SLOW_JOBS = ["ekran", "kamera", "konum", "getir"];
+const FILE_TTL_MS = 60 * 60 * 1000;      // panele gelen dosya 1 saat indirilebilir
+const FILE_CHUNK = 1024 * 1024;          // Durable Object'te 1 MB'lık parçalar halinde durur
+const MAX_FILES = 3;                     // panelde aynı anda en fazla 3 dosya
+// Tarayıcıda açılabilecek türler; geri kalanı her zaman indirilir (HTML gibi dosyalar panelin adresinde çalışmasın)
+const INLINE_TYPES = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", txt: "text/plain; charset=utf-8" };
+const DOWNLOAD_TYPES = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  doc: "application/msword", xls: "application/vnd.ms-excel", ppt: "application/vnd.ms-powerpoint", zip: "application/zip",
+  mp3: "audio/mpeg", mp4: "video/mp4", m4a: "audio/mp4",
+};
 const LOST_EVERY_MS = 15 * 60 * 1000;    // kayıp modu: bilgisayar açık kaldıkça 15 dakikada bir rapor
 const LOST_DELAY_MS = 10 * 1000;         // bilgisayar bağlanınca ilk rapor 10 saniye sonra (program otursun)
 const LOST_WAIT_MS = 40 * 1000;          // kayıp modunda kamera ve konum için beklenen süre
@@ -36,6 +48,7 @@ export const PC_HELP = [
   "<code>/pc müzik durdur</code> · <code>/pc müzik sonraki</code> · <code>/pc müzik önceki</code>",
   "<code>/pc aç spotify</code> uygulama, site ya da bağlantı açar; <code>/pc uygulamalar</code> tanıdıklarım",
   "<code>/pc dosyalar</code> İndirilenler ve Masaüstündeki son dosyalar; <code>/pc dosya 3</code> 3. dosyayı gönderir",
+  "<code>/pc getir devre raporu</code> adına benzeyen dosyayı bilgisayarda bulur, panele gönderir",
   "<code>/pc bağla</code> bilgisayarı bağlar · <code>/pc ayır</code> bağlantıyı kaldırır",
   "Normal cümle de olur: \"bilgisayarı kilitle\", \"sesi 30 yap\", \"ekranın fotoğrafını at\".",
 ].join("\n");
@@ -105,6 +118,10 @@ export function parsePc(args) {
   if (["yardim", "komutlar", "help"].includes(first)) return { say: PC_HELP };
   if (first === "uygulamalar") return job("uygulamalar");
   if (first === "dosyalar") return job("dosyalar");
+  if (["getir", "gonder", "bulgetir"].includes(first)) {
+    const what = raw.replace(/^\S+\s*/, "").trim();   // Türkçe harfler bozulmasın
+    return what ? job("getir", what.slice(0, 120)) : { say: "Hangi dosyayı getireyim? Örnek: <code>/pc getir devre raporu</code>" };
+  }
   if (first === "dosya") {
     const n = Number.parseInt(rest[0], 10);
     return Number.isInteger(n) && n > 0 ? job("dosya", String(n)) : job("dosyalar");
@@ -206,6 +223,18 @@ export function parseWhere(header) {
   }
 }
 
+// "Rapor.PDF" -> { type, inline }
+export function fileType(name) {
+  const ext = /\.([a-z0-9]{1,5})$/i.exec(String(name ?? ""))?.[1]?.toLowerCase() ?? "";
+  if (INLINE_TYPES[ext]) return { type: INLINE_TYPES[ext], inline: true };
+  return { type: DOWNLOAD_TYPES[ext] ?? "application/octet-stream", inline: false };
+}
+
+export function contentDisposition(name, inline) {
+  const ascii = String(name).replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 const hhmm = (ms) => { const p = trParts(ms); return `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}`; };
 
 // "🌐 İnternet bağlantısına göre ..." satırı (Telegram HTML)
@@ -248,6 +277,7 @@ export class PcHub {
     this.lostEvery = LOST_EVERY_MS;
     this.lostDelay = LOST_DELAY_MS;
     this.findEvery = FIND_EVERY_MS;
+    this.fileChunk = FILE_CHUNK;
     // Programın 30 saniyede bir gönderdiği "ping"e Cloudflare uyandırmadan "pong" der.
     if (typeof WebSocketRequestResponsePair !== "undefined" && state.setWebSocketAutoResponse) {
       state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -283,6 +313,7 @@ export class PcHub {
       if (path === "/pc/connect") return await this.connect(request);
       if (path === "/pc/upload" && request.method === "POST") return await this.upload(request);
       if (path === "/panel/live") return await this.live(request);
+      if (path.startsWith("/panel/file/") && request.method === "GET") return await this.serveFile(request);
     } catch (err) {
       console.error("bilgisayar isteği işlenemedi", err?.message);
       return json({ error: "Jarvis'te bir hata oldu, biraz sonra yeniden dener misin?" }, 500);
@@ -388,6 +419,10 @@ export class PcHub {
       await storage.put("lost", { on: true, since: Date.now(), n: 0, next: online ? Date.now() + 1000 : null });
       await this.schedule();
       return { paired, online };
+    }
+    if (op === "files") {
+      const files = await this.liveFiles();
+      return { files: files.map((f) => ({ id: f.id, name: f.name, size: f.size, exp: f.exp, url: `/panel/file/${f.id}?t=${f.token}` })) };
     }
     if (op === "where") return { where: (await storage.get("where")) ?? null, lost: Boolean((await storage.get("lost"))?.on) };
     if (op === "status") {
@@ -624,8 +659,10 @@ export class PcHub {
     if (!(await this.authorized(request))) return json({ error: "yetkisiz" }, 401);
     const size = Number(request.headers.get("Content-Length") ?? 0);
     if (size > MAX_UPLOAD) return json({ error: "Dosya çok büyük (en fazla 45 MB)." }, 413);
-    const kind = request.headers.get("X-Tur") === "foto" ? "foto" : "dosya";
+    const tur = request.headers.get("X-Tur");
+    const kind = tur === "foto" ? "foto" : tur === "panel" ? "panel" : "dosya";
     const name = decodeURIComponent(request.headers.get("X-Ad") ?? "dosya").slice(0, 120) || "dosya";
+    if (kind === "panel") return this.storeFile(name, request);
     const caption = decodeURIComponent(request.headers.get("X-Not") ?? "").slice(0, 900);
     const blob = await request.blob();
     if (blob.size > MAX_UPLOAD) return json({ error: "Dosya çok büyük (en fazla 45 MB)." }, 413);
@@ -641,5 +678,97 @@ export class PcHub {
       return json({ error: "Telegram dosyayı kabul etmedi." }, 502);
     }
     return json({ ok: true });
+  }
+
+  // ---------- panele gelen dosyalar ----------
+
+  // Süresi geçenleri siler, kalanları döndürür
+  async liveFiles() {
+    const storage = this.state.storage;
+    const files = (await storage.get("files")) ?? [];
+    const now = Date.now();
+    const keep = files.filter((f) => f.exp > now);
+    if (keep.length !== files.length) {
+      for (const f of files.filter((x) => x.exp <= now)) await this.dropChunks(f);
+      await storage.put("files", keep);
+    }
+    return keep;
+  }
+
+  async dropChunks(f) {
+    for (let i = 0; i < f.n; i += 1) await this.state.storage.delete(`file:${f.id}:${i}`);
+  }
+
+  // Bilgisayardan gelen dosya parça parça saklanır; açık uygulamalara ve telefona haber gider.
+  async storeFile(name, request) {
+    const storage = this.state.storage;
+    const files = await this.liveFiles();
+    const id = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const meta = { id, token: newToken(), name, size: 0, n: 0, ...fileType(name), exp: Date.now() + FILE_TTL_MS };
+    let parts = [], filled = 0;
+    const flush = async () => {
+      if (!filled) return;
+      const out = new Uint8Array(filled);
+      let at = 0;
+      for (const p of parts) { out.set(p, at); at += p.length; }
+      await storage.put(`file:${id}:${meta.n}`, out);
+      meta.n += 1;
+      parts = [];
+      filled = 0;
+    };
+    const reader = request.body?.getReader();
+    if (!reader) return json({ error: "Dosya boş." }, 400);
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      meta.size += value.length;
+      if (meta.size > MAX_UPLOAD) {
+        await this.dropChunks(meta);
+        return json({ error: "Dosya çok büyük (en fazla 45 MB)." }, 413);
+      }
+      let rest = value;
+      while (rest.length) {
+        const take = Math.min(rest.length, this.fileChunk - filled);
+        parts.push(rest.subarray(0, take));
+        filled += take;
+        rest = rest.subarray(take);
+        if (filled === this.fileChunk) await flush();
+      }
+    }
+    await flush();
+    files.push(meta);
+    while (files.length > MAX_FILES) await this.dropChunks(files.shift());
+    await storage.put("files", files);
+    this.broadcast({ tip: "dosya", name });
+    await this.pushAll({ title: "📄 Dosya hazır", body: `${name} panelde, 1 saat içinde indirebilirsin.`, url: "/panel", tag: "dosya" });
+    return json({ ok: true });
+  }
+
+  // GET /panel/file/<id>?t=<anahtar>: anahtar yalnızca panelin (gizli anahtarla açılan) verisinde görünür.
+  async serveFile(request) {
+    const url = new URL(request.url);
+    const id = url.pathname.split("/")[3] ?? "";
+    const token = url.searchParams.get("t") ?? "";
+    const meta = (await this.liveFiles()).find((f) => f.id === id);
+    if (!meta || !token || token !== meta.token) {
+      return new Response("Bu dosyanın süresi dolmuş ya da bağlantı yanlış. Bilgisayardan yeniden iste.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    const storage = this.state.storage;
+    let i = 0;
+    const body = new ReadableStream({
+      async pull(controller) {
+        if (i >= meta.n) { controller.close(); return; }
+        const chunk = await storage.get(`file:${meta.id}:${i}`);
+        i += 1;
+        if (!chunk) { controller.error(new Error("dosya parçası yok")); return; }
+        controller.enqueue(new Uint8Array(chunk));
+      },
+    });
+    return new Response(body, {
+      headers: {
+        "Content-Type": meta.type, "Content-Length": String(meta.size), "Content-Disposition": contentDisposition(meta.name, meta.inline),
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex",
+      },
+    });
   }
 }
