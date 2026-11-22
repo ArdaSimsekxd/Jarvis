@@ -25,6 +25,17 @@ export const TRAM_HELP = [
   "<i>~</i> işaretli süreler canlı değil, tarifeye göre.",
 ].join("\n");
 
+// Varış isteği: site tarayıcının "HatTuru=2" (tramvay) çerezine bakıyor; çerezsiz istek 500 veriyor.
+// İsteğin tam biçimi belgeli olmadığı için birkaç biçim sırayla denenir; çalışan biçim bir gün hatırlanır.
+const ARRIVAL_COOKIE = "dil=tr; HatTuru=2";
+const ARRIVAL_REFERER = `${BASE}/OtobusTramvayHatlariHatDetay/HatDetay/1/?HAT_TURU=TRAMVAY&&HAT_YON=ARRIVAL`;
+export const ARRIVAL_VARIANTS = [
+  { label: "çerez", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
+  { label: "çerez + JSON", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/json; charset=utf-8" }, body: "{}" } },
+  { label: "çerez + form", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: "" } },
+  { label: "GET", init: { method: "GET", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
+];
+
 export const isGuid = (id) => GUID.test(String(id ?? ""));
 export const tramMapUrl = (line, dir) => `${BASE}/OtobusTramvayHatlari/OtobusDuraklariHaritaJSON?lineId=${encodeURIComponent(line)}&directions=${dir}`;
 export const tramArrivalsUrl = (id) => `${BASE}/OtobusTramvayHatlari/AracNeZamanGelecekTramvay/${id}`;
@@ -118,11 +129,22 @@ export async function fetchTramArrivals(ctx, id) {
   const name = `tramvay:${id}`;
   const hit = await ctx.cache?.get(name).catch(() => null);
   if (hit) return hit;
-  const res = await ctx.webFetch(tramArrivalsUrl(id), { method: "POST", headers: HEADERS });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const list = parseTramArrivals(await res.json());
-  await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
-  return list;
+  const known = Number(await ctx.cache?.get("tramvay:bicim").catch(() => null));
+  const order = Number.isInteger(known) && ARRIVAL_VARIANTS[known] ? [known, ...ARRIVAL_VARIANTS.keys()].filter((v, i, a) => a.indexOf(v) === i) : [...ARRIVAL_VARIANTS.keys()];
+  let last = null;
+  for (const v of order) {
+    try {
+      const res = await ctx.webFetch(tramArrivalsUrl(id), ARRIVAL_VARIANTS[v].init);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = parseTramArrivals(await res.json());
+      if (v !== known) await ctx.cache?.put("tramvay:bicim", v, 24 * 3600).catch(() => {});
+      await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
+      return list;
+    } catch (err) {
+      last = err;   // bu biçim çalışmadı (ya da hatırlanan biçim artık çalışmıyor): sıradakini dene
+    }
+  }
+  throw last ?? new Error("tramvay varışı alınamadı");
 }
 
 const metres = (km) => (km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(1)} km`);
@@ -200,7 +222,7 @@ export function findTramStops(index, query) {
 async function tramTest(ctx, index) {
   const id = Object.keys(index.stops)[0];
   const probes = [["Durak haritası (T1)", tramMapUrl("T1", 2), { headers: HEADERS }]];
-  if (id) probes.push(["Varış süreleri", tramArrivalsUrl(id), { method: "POST", headers: HEADERS }]);
+  if (id) for (const v of ARRIVAL_VARIANTS) probes.push([`Varış süreleri (${v.label}) · ${esc(index.stops[id][0])}`, tramArrivalsUrl(id), v.init]);
   const out = ["🔧 <b>Tramvay testi</b>"];
   for (const [label, url, init] of probes) {
     try {
