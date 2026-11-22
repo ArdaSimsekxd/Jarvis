@@ -14,6 +14,7 @@ import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
 import { cmdEczane } from "./pharmacy.js";
 import { busLocation, cmdOtobus } from "./bus.js";
+import { cmdAklimda } from "./aklimda.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -350,6 +351,7 @@ async function runCommand(cmd, ctx) {
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
   if (["otobus", "otobüs", "durak", "otobusler"].includes(cmd.command)) return cmdOtobus(cmd.args, ctx);
+  if (["aklimda", "aklımda", "yapilacak", "yapilacaklar", "todo"].includes(cmd.command)) return cmdAklimda(cmd.args, ctx);
   if (["kisilik", "kişilik", "jarvis"].includes(cmd.command)) return cmdKisilik(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";

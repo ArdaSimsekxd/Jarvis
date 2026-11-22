@@ -1,5 +1,6 @@
 // Jarvis paneli: Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı sayfa.
 // Sayfanın kendisi veri içermez; veriler yalnızca gizli anahtarla (/panel komutunun verdiği bağlantı) okunur.
+import { addItem, doneById, loadItems } from "./aklimda.js";
 import { MAIL_KEY, WEEKDAYS, dateKey, esc, isMissing, isSubmitted, plain, trParts, trToMs } from "./logic.js";
 import { CATEGORIES, loadBudget, loadMonth, monthKey } from "./expenses.js";
 import { loadMemory } from "./memory.js";
@@ -171,12 +172,14 @@ export async function buildPanel(ctx, src) {
       loadMemory(ctx.kv), src.reminders().catch(() => []), loadState(ctx.kv), loadMonth(ctx.kv, monthKey(now)),
       loadBudget(ctx.kv), readJson(ctx.kv, MAIL_KEY), src.names().catch(() => ({})), src.menu().catch(() => null),
     ]);
+    const aklimda = (await loadItems(ctx.kv)).map((i) => ({ id: i.id, text: i.text, at: i.at }));
     const fitness = wantedSlots(fit.rules, now).filter((s) => fit.slots[s.key]?.ref);
     const p = trParts(now);
     return {
       lessons: lessonDays(ctx.schedule, now, names),
       upcoming: upcomingItems({ notes: mem.notes, reminders, fitness }, now),
       reminders: reminderItems(reminders, now),
+      aklimda,
       expenses: expenseSummary(month, budget, now),
       mails: mailList(mails?.mails),
       menu: menuItems(menu, trToMs(p.y, p.m, p.d)),
@@ -367,6 +370,19 @@ export async function handlePanel(request, ctx, src) {
       console.error("sohbet geçmişi okunamadı", err?.message);
       return json({ log: null });
     }
+  }
+  // Aklımda listesi: panelden ekle ve bitti işaretle; diğer cihazlar hemen yenilenir
+  if (path === "/panel/aklimda" && (request.method === "POST" || request.method === "DELETE")) {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    const body = await request.json().catch(() => ({}));
+    if (request.method === "POST") {
+      const r = await addItem(ctx.kv, body.text, ctx.now, ctx.id?.() ?? crypto.randomUUID().slice(0, 8));
+      if (r.error) return json({ ok: false, error: r.error.replace(/<[^>]+>/g, "") }, r.dup ? 409 : 400);
+    } else if (!(await doneById(ctx.kv, String(body.id ?? "")))) {
+      return json({ ok: false }, 404);
+    }
+    await ctx.pc?.call("notify").catch(() => {});
+    return json({ ok: true });
   }
   if (path === "/panel/reminder" && request.method === "DELETE") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
