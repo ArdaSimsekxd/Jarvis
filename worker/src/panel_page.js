@@ -121,6 +121,10 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .msg.wait { color: var(--muted); font-style: italic; }
 .msg code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: var(--cyan); }
 .chatform { display: flex; gap: 8px; }
+.mic { flex: 0 0 auto; width: 52px; font-size: 22px; padding: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.mic.rec { background: rgba(255, 77, 109, .22); border-color: #ff4d6d; box-shadow: 0 0 18px rgba(255, 77, 109, .55); animation: pulse 1s ease-in-out infinite; }
+.mic:disabled { opacity: .5; }
+@keyframes pulse { 50% { box-shadow: 0 0 4px rgba(255, 77, 109, .2); } }
 input[type=text] { flex: 1; min-width: 0; font: 500 17px var(--body); color: var(--text); background: rgba(3, 7, 13, .7); border: 1px solid var(--line);
   border-radius: 6px; padding: 10px 12px; outline: none; }
 input[type=text]:focus { border-color: var(--cyan); box-shadow: 0 0 12px rgba(63, 216, 255, .25); }
@@ -193,8 +197,10 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         <div class="chatlog" id="chatlog" aria-live="polite"></div>
         <form class="chatform" id="chatForm" autocomplete="off">
           <input type="text" id="chatInput" placeholder="Jarvis'e yaz: yarın derslerim ne?" maxlength="1000" aria-label="Jarvis'e mesaj">
+          <button type="button" id="mic" class="mic" aria-label="Basılı tut ve konuş" title="Basılı tut ve konuş (ya da dokun, konuş, yeniden dokun)">🎙</button>
           <button type="submit">Gönder</button>
         </form>
+        <div class="toast" id="micState" aria-live="polite"></div>
       </section>
       <section class="card"><h2>BUGÜN <span class="count" id="cLessons"></span></h2><div id="lessons"></div></section>
       <section class="card wide"><h2>ÖDEVLER <span class="count" id="cHomework"></span></h2><div id="homework"></div></section>
@@ -511,6 +517,100 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
   }
   history.forEach(function (h) { bubble(h.w, h.t); });
   if (!history.length) bubble("bot", "Merhaba efendim. Ne yapmamı istersin? Örnek: <i>bu hafta beni ne bekliyor?</i>, <i>kahveye 80 TL verdim</i>, <i>bilgisayarı kilitle</i>");
+
+  // ---------- sesli komut: kayıt tarayıcıda WAV'a (16 kHz, tek kanal) çevrilir, Jarvis yazıya çevirip cevaplar ----------
+  var rec = null, recStart = 0, toggleMode = false, MAX_REC_MS = 60000;
+  function micState(t) { $("micState").textContent = t || ""; }
+  function wav(chunks, rate) {
+    var n = 0, i, j;
+    for (i = 0; i < chunks.length; i++) n += chunks[i].length;
+    var all = new Float32Array(n), at = 0;
+    for (i = 0; i < chunks.length; i++) { all.set(chunks[i], at); at += chunks[i].length; }
+    var ratio = rate / 16000, len = Math.floor(n / ratio), pcm = new Int16Array(len);
+    for (i = 0; i < len; i++) {
+      var from = Math.floor(i * ratio), to = Math.min(n, Math.floor((i + 1) * ratio)), sum = 0, c = 0;
+      for (j = from; j < to; j++) { sum += all[j]; c++; }
+      var v = Math.max(-1, Math.min(1, c ? sum / c : 0));
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    var buf = new ArrayBuffer(44 + pcm.length * 2), d = new DataView(buf);
+    function str(o, t) { for (var k = 0; k < t.length; k++) d.setUint8(o + k, t.charCodeAt(k)); }
+    str(0, "RIFF"); d.setUint32(4, 36 + pcm.length * 2, true); str(8, "WAVE"); str(12, "fmt ");
+    d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 16000, true);
+    d.setUint32(28, 32000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); str(36, "data"); d.setUint32(40, pcm.length * 2, true);
+    for (i = 0; i < pcm.length; i++) d.setInt16(44 + i * 2, pcm[i], true);
+    return new Blob([buf], { type: "audio/wav" });
+  }
+  function startRec() {
+    if (rec) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !AC) { micState("Bu tarayıcı mikrofonu desteklemiyor."); return; }
+    var ac = new AC();   // dokunuşun içinde açılmalı (iPhone)
+    rec = { ac: ac, chunks: [], stream: null, node: null, src: null, timer: null };
+    recStart = Date.now();
+    $("mic").classList.add("rec");
+    micState("Dinliyorum… Bırakınca gönderirim.");
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
+      if (!rec) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      rec.stream = stream;
+      rec.src = ac.createMediaStreamSource(stream);
+      rec.node = ac.createScriptProcessor(4096, 1, 1);
+      rec.node.onaudioprocess = function (e) { if (rec) rec.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      rec.src.connect(rec.node); rec.node.connect(ac.destination);
+      if (ac.resume) ac.resume();
+      rec.timer = setTimeout(function () { stopRec(true); }, MAX_REC_MS);
+    }).catch(function () {
+      cleanup();
+      micState("Mikrofon izni yok. iPhone'da Ayarlar > Safari > Mikrofon'dan izin ver, sonra yeniden dene.");
+    });
+  }
+  function cleanup() {
+    var r = rec;
+    rec = null; toggleMode = false;
+    $("mic").classList.remove("rec");
+    if (!r) return null;
+    clearTimeout(r.timer);
+    try { if (r.node) { r.node.disconnect(); r.node.onaudioprocess = null; } if (r.src) r.src.disconnect(); } catch (e) {}
+    if (r.stream) r.stream.getTracks().forEach(function (t) { t.stop(); });
+    var rate = r.ac.sampleRate;
+    try { r.ac.close(); } catch (e) {}
+    return { chunks: r.chunks, rate: rate };
+  }
+  function stopRec(send) {
+    var took = Date.now() - recStart, r = cleanup();
+    if (!r || !send) { micState(""); return; }
+    if (took < 600 || !r.chunks.length) { micState("Çok kısa oldu. Basılı tutup konuş."); return; }
+    micState("");
+    var mine = bubble("me", "🎙 …"), waiting = bubble("bot", "Dinledim, düşünüyorum…", "wait");
+    $("mic").disabled = true;
+    fetch("/panel/voice", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "audio/wav" }, body: wav(r.chunks, r.rate) })
+      .then(function (res) { if (res.status === 401) throw new Error("yetki"); return res.json(); })
+      .then(function (res) {
+        waiting.remove();
+        if (res.text) { mine.textContent = "🎙 " + res.text; remember("me", "🎙 " + res.text); } else mine.remove();
+        (res.replies && res.replies.length ? res.replies : [res.error || "Tamam."]).forEach(function (h) { bubble("bot", h); remember("bot", h); });
+      })
+      .catch(function (err) {
+        waiting.remove(); mine.remove();
+        if (err.message === "yetki") return gate("Giriş süren dolmuş. Telegram'da /panel yazıp gelen kodu gir.");
+        bubble("bot", "Jarvis'e ulaşılamadı, biraz sonra yeniden dener misin?");
+      })
+      .then(function () { $("mic").disabled = false; });
+  }
+  // Basılı tut: bırakınca gönderir. Kısa dokunuş: kayıt açık kalır, yeniden dokununca gönderir.
+  $("mic").addEventListener("pointerdown", function (ev) {
+    ev.preventDefault();
+    if (rec && toggleMode) { stopRec(true); return; }
+    startRec();
+  });
+  $("mic").addEventListener("pointerup", function (ev) {
+    ev.preventDefault();
+    if (!rec || toggleMode) return;
+    if (Date.now() - recStart < 350) { toggleMode = true; micState("Dinliyorum… Bitince 🎙'a yeniden dokun."); return; }
+    stopRec(true);
+  });
+  $("mic").addEventListener("pointercancel", function () { if (rec && !toggleMode) stopRec(false); });
+  $("mic").addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
 
   $("chatForm").addEventListener("submit", function (ev) {
     ev.preventDefault();

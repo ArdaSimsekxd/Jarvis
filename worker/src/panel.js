@@ -308,6 +308,13 @@ export function plainText(html) {
     .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+export const MAX_PANEL_AUDIO = 2 * 1024 * 1024;   // 16 kHz tek kanal WAV: 1 dakika ≈ 1,9 MB
+
+export function isWav(bytes) {
+  const tag = (from, to) => String.fromCharCode(...bytes.slice(from, to));
+  return bytes.length > 44 && tag(0, 4) === "RIFF" && tag(8, 12) === "WAVE";
+}
+
 export async function handlePanel(request, ctx, src) {
   const path = new URL(request.url).pathname;
   if (path === "/panel/manifest.webmanifest") {
@@ -349,6 +356,22 @@ export async function handlePanel(request, ctx, src) {
     } catch (err) {
       console.error("uygulama sohbeti cevaplanamadı", err?.message);
       return json({ replies: ["Şu an cevap veremedim, biraz sonra yeniden dener misin?"] });
+    }
+  }
+  // Sesli komut: panel kaydı WAV olarak gönderir; yazıya çevrilir ve sohbet gibi cevaplanır. Kayıt saklanmaz, loglanmaz.
+  if (path === "/panel/voice" && request.method === "POST") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    if (!src.voice) return json({ text: "", replies: ["Sesli komut bu kurulumda açık değil."] });
+    if (Number(request.headers.get("Content-Length") ?? 0) > MAX_PANEL_AUDIO) return json({ error: "Kayıt çok uzun (en fazla 1 dakika)." }, 413);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.length > MAX_PANEL_AUDIO) return json({ error: "Kayıt çok uzun (en fazla 1 dakika)." }, 413);
+    if (!isWav(bytes)) return json({ error: "Ses kaydı okunamadı." }, 400);
+    try {
+      const r = await src.voice(bytes);
+      return json(r.text ? r : { text: "", replies: ["Ses kaydında bir şey duyamadım. Biraz daha yakından konuşup tekrar dener misin?"] });
+    } catch (err) {
+      console.error("panel sesi çevrilemedi", err?.message);
+      return json({ text: "", replies: ["Sesi yazıya çeviremedim. Birazdan tekrar dener misin ya da yazarak gönderir misin?"] });
     }
   }
   if (path === "/panel/push" && (request.method === "POST" || request.method === "DELETE")) {
