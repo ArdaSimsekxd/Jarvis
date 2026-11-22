@@ -25,20 +25,25 @@ export const TRAM_HELP = [
   "<i>~</i> işaretli süreler canlı değil, tarifeye göre.",
 ].join("\n");
 
-// Varış isteği: site tarayıcının "HatTuru=2" (tramvay) çerezine bakıyor; çerezsiz istek 500 veriyor.
-// İsteğin tam biçimi belgeli olmadığı için birkaç POST biçimi sırayla denenir; çalışan biçim bir gün hatırlanır.
-// (GET isteği veri değil, sitenin normal sayfasını döndürüyor; o yüzden denenmez.)
-// Site bazı duraklarda (ör. hat sonu ya da teknik duraklar) her biçime 500 veriyor: bu "veri yok" sayılır.
+// Varış isteği (Arda'nın DevTools kaydından): JSON gövdede durağın kodu { code: "<guid>" }, tramvay çerezi
+// "HatTuru=2" ve HatDetay sayfasının Referer'ı. Gövdesiz istekte site "404 Sayfa Bulunamadı" sayfasıyla 500 veriyor.
+// Doğru istekte 500 gelirse o durak için veri yok sayılır (ör. hat sonu ya da teknik durak).
 const ARRIVAL_COOKIE = "dil=tr; HatTuru=2";
 const ARRIVAL_REFERER = `${BASE}/OtobusTramvayHatlariHatDetay/HatDetay/1/?HAT_TURU=TRAMVAY&&HAT_YON=ARRIVAL`;
-// Tarayıcının (Brave) gönderdiği ek başlıklar: dil ve aynı siteden gelen POST'un Origin'i.
-const BROWSER = { Accept: "*/*", "Accept-Language": "tr-TR,tr;q=0.9", Origin: BASE };
-export const ARRIVAL_VARIANTS = [
-  { label: "tarayıcı başlıkları", init: { method: "POST", headers: { ...HEADERS, ...BROWSER, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER }, body: "" } },
-  { label: "çerez", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
-  { label: "çerez + JSON", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/json; charset=utf-8" }, body: "{}" } },
-  { label: "çerez + form", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: "" } },
-];
+export function arrivalInit(id) {
+  return {
+    method: "POST",
+    headers: {
+      ...HEADERS,
+      "Accept-Language": "tr-TR,tr;q=0.9",
+      Origin: BASE,
+      Cookie: ARRIVAL_COOKIE,
+      Referer: ARRIVAL_REFERER,
+      "Content-Type": "application/json; charset=UTF-8",
+    },
+    body: JSON.stringify({ code: id }),
+  };
+}
 
 const NO_DATA_TTL = 300;                              // 500 veren durak 5 dakika yeniden sorulmaz
 const TECHNICAL = /makas/i;                           // "Makas Bölgesi" gibi yolcu durağı olmayan noktalar konum aramasında atlanır
@@ -137,28 +142,15 @@ export async function fetchTramArrivals(ctx, id) {
   const hit = await ctx.cache?.get(name).catch(() => null);
   if (hit === "yok") throw noData();
   if (hit) return hit;
-  const known = Number(await ctx.cache?.get("tramvay:bicim").catch(() => null));
-  const order = Number.isInteger(known) && ARRIVAL_VARIANTS[known] ? [known, ...ARRIVAL_VARIANTS.keys()].filter((v, i, a) => a.indexOf(v) === i) : [...ARRIVAL_VARIANTS.keys()];
-  let last = null, all500 = true;
-  for (const v of order) {
-    try {
-      const res = await ctx.webFetch(tramArrivalsUrl(id), ARRIVAL_VARIANTS[v].init);
-      if (res.status !== 500) all500 = false;
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const list = parseTramArrivals(await res.json());
-      if (v !== known) await ctx.cache?.put("tramvay:bicim", v, 24 * 3600).catch(() => {});
-      await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
-      return list;
-    } catch (err) {
-      if (!/^HTTP /.test(String(err?.message))) all500 = false;   // ağ hatası ya da JSON olmayan yanıt
-      last = err;   // bu biçim çalışmadı (ya da hatırlanan biçim artık çalışmıyor): sıradakini dene
-    }
-  }
-  if (all500) {
+  const res = await ctx.webFetch(tramArrivalsUrl(id), arrivalInit(id));
+  if (res.status === 500) {
     await ctx.cache?.put(name, "yok", NO_DATA_TTL).catch(() => {});
     throw noData();
   }
-  throw last ?? new Error("tramvay varışı alınamadı");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const list = parseTramArrivals(await res.json());
+  await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
+  return list;
 }
 
 function noData() {
@@ -252,7 +244,7 @@ export function errorHint(html) {
   return [title && `başlık: ${title}`, m && `ipucu: ${m[0].trim()}`].filter(Boolean).join(" · ").slice(0, 260);
 }
 
-// Test: harita + bir durağın varışı her istek biçimiyle. "/tramvay test hunat" o durağı dener.
+// Test: harita + bir durağın varışı. "/tramvay test hunat" o durağı dener.
 function testStop(index, query) {
   if (query) return findTramStops(index, query)[0] ?? null;
   const all = Object.entries(index.stops).map(([id, [name]]) => ({ id, name }));
@@ -263,7 +255,7 @@ async function tramTest(ctx, index, query) {
   const stop = testStop(index, query);
   if (query && !stop) return `"${esc(query)}" adında tramvay durağı bulamadım.`;
   const probes = [["Durak haritası (T1)", tramMapUrl("T1", 2), { headers: HEADERS }]];
-  if (stop) for (const v of ARRIVAL_VARIANTS) probes.push([`Varış · ${esc(stop.name)} · ${v.label}`, tramArrivalsUrl(stop.id), v.init]);
+  if (stop) probes.push([`Varış · ${esc(stop.name)}`, tramArrivalsUrl(stop.id), arrivalInit(stop.id)]);
   const out = ["🔧 <b>Tramvay testi</b>"];
   for (const [label, url, init] of probes) {
     try {
