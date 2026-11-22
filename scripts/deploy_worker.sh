@@ -75,7 +75,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"ara","description":"İnternette ara: /ara soru"},
   {"command":"ozetle","description":"Bağlantıdaki sayfayı özetle"},
   {"command":"panel","description":"Jarvis paneli: her şey tek ekranda"},
-  {"command":"pc","description":"Bilgisayarın: /pc kilitle, /pc ekran, /pc bağla"},
+  {"command":"pc","description":"Bilgisayarın: /pc kilitle, /pc ekran, /pc kayıp, /pc bağla"},
   {"command":"deprem","description":"Son depremler ve deprem uyarısı"},
   {"command":"kargo","description":"Kargo takibi: /kargo takip-numarası"},
   {"command":"eczane","description":"Bu gece nöbetçi eczaneler (Kayseri)"},

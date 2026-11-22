@@ -1,7 +1,7 @@
 // Bilgisayarı yöneten Jarvis. Windows'ta arka planda çalışan küçük program (pc/jarvis_pc.py), bu dosyadaki
 // Durable Object'e (PcHub) WebSocket ile bağlanır. Bot bir iş gönderir, program yapar ve sonucu yazar.
 // Program bağlantıyı kendisi açtığı için modemde ayar gerekmez. Yalnızca programın tanıdığı işler yapılır.
-import { esc, plain } from "./logic.js";
+import { esc, isQuiet, plain, trParts } from "./logic.js";
 import { PANEL_KEY } from "./panel.js";
 import { makeVapidKeys, sendPush, trustedEndpoint } from "./webpush.js";
 
@@ -10,22 +10,28 @@ const PAIR_TTL_MS = 60 * 60 * 1000;      // eşleştirme kodu 1 saat geçerli
 const PAIR_TRIES = 10;                   // bu kadar yanlış denemeden sonra kod silinir
 const WAIT_MS = 9000;                    // bilgisayarın cevabı için beklenen süre (Telegram cevabı 30 saniyeye sığmalı)
 const SLOW_WAIT_MS = 15000;              // ekran görüntüsü gibi yavaş işler için
+const SLOW_JOBS = ["ekran", "kamera", "konum"];
+const LOST_EVERY_MS = 15 * 60 * 1000;    // kayıp modu: bilgisayar açık kaldıkça 15 dakikada bir rapor
+const LOST_DELAY_MS = 10 * 1000;         // bilgisayar bağlanınca ilk rapor 10 saniye sonra (program otursun)
+const LOST_WAIT_MS = 40 * 1000;          // kayıp modunda kamera ve konum için beklenen süre
 const MAX_UPLOAD = 45 * 1024 * 1024;     // Telegram botları en fazla 50 MB dosya gönderebilir
 const MAX_PHOTO = 9 * 1024 * 1024;       // fotoğraf olarak gönderilebilecek en büyük boy (üstü dosya olarak gider)
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // 32 harf: karışan 0/O, 1/I yok
 const LOGIN_TTL_MS = 15 * 60 * 1000;     // uygulamaya giriş kodu 15 dakika geçerli
 const MAX_SUBS = 5;                      // bildirim alabilecek en fazla cihaz
 const FIND_MS = 3 * 60 * 1000;           // telefonumu bul: 3 dakika boyunca
 const FIND_EVERY_MS = 20 * 1000;         // 20 saniyede bir bildirim
 const FIND_RINGS = 9;
-const PUSH_SUBJECT = "https://github.com/ArdaSimsekxd/Jarvis";   // bildirim servislerine verilen iletişim adresi   // 32 harf: karışan 0/O, 1/I yok
+const PUSH_SUBJECT = "https://github.com/ArdaSimsekxd/Jarvis";   // bildirim servislerine verilen iletişim adresi
+export const WHERE_HEADER = "X-Jarvis-Yer";   // worker'ın bağlantıya eklediği yaklaşık yer (IP'ye göre)
 
 export const PC_HELP = [
   "🖥 <b>Bilgisayar komutları</b>",
   "<code>/pc</code> açık mı, pil durumu",
   "<code>/pc kilitle</code> · <code>/pc uyku</code>",
   "<code>/pc kapat</code> · <code>/pc yeniden</code> (1 dakika sonra; vazgeçmek için <code>/pc iptal</code>)",
-  "<code>/pc ekran</code> ekran görüntüsü",
+  "<code>/pc ekran</code> ekran görüntüsü · <code>/pc kamera</code> kameradan fotoğraf · <code>/pc konum</code> bilgisayar nerede",
+  "<code>/pc kayıp</code> kayıp/çalıntı modu: fotoğraf, konum, kilit; 15 dakikada bir tekrar. Bulunca <code>/pc bulundu</code>",
   "<code>/pc ses 40</code> · <code>/pc ses aç</code> · <code>/pc ses kıs</code> · <code>/pc ses kapat</code>",
   "<code>/pc müzik durdur</code> · <code>/pc müzik sonraki</code> · <code>/pc müzik önceki</code>",
   "<code>/pc aç spotify</code> uygulama, site ya da bağlantı açar; <code>/pc uygulamalar</code> tanıdıklarım",
@@ -73,6 +79,12 @@ export function parsePc(args) {
   if (["yeniden", "restart", "yenidenbaslat"].includes(first)) return job("yeniden");
   if (["iptal", "vazgec", "durdur"].includes(first)) return job("iptal");
   if (["ekran", "ss", "goruntu", "screenshot"].includes(first)) return job("ekran");
+  if (["kamera", "webcam", "selfie"].includes(first)) return job("kamera");
+  if (["konum", "nerede", "neresi", "yer"].includes(first)) return job("konum");
+  if (["kayip", "calindi", "caldilar", "kayboldu", "kaybettim"].includes(first)) {
+    return ["kapat", "bitir", "dur", "iptal", "kaldir"].includes(rest[0]) ? { local: "found" } : { local: "lost" };
+  }
+  if (["bulundu", "buldum"].includes(first)) return { local: "found" };
   if (first === "ses") {
     const n = /^[+-]?\d{1,3}$/.test(rest[0] ?? "") ? rest[0] : null;
     if (n !== null) return Math.abs(Number(n)) <= 100 ? job("ses", n) : { say: "Sesi 0 ile 100 arasında bir sayıya ayarlayabilirim." };
@@ -145,19 +157,75 @@ export async function cmdPc(args, ctx) {
       ? "🖥 Zaten bağlı bir bilgisayar yok."
       : "🖥 Bilgisayarın bağlantısını kaldırdım. Program artık komut almayacak; tamamen silmek için bilgisayarda dosyayı yeniden açıp <b>kaldir</b> yazabilirsin.";
   }
+  if (p.local === "lost") {
+    const r = await ctx.pc.call("lost", { on: true });
+    if (!r.paired) return NOT_PAIRED;
+    return [
+      r.online
+        ? "🚨 <b>Kayıp modu açık.</b> Şimdi ekran görüntüsü, kamera fotoğrafı ve konum gönderip bilgisayarı kilitliyorum."
+        : "🚨 <b>Kayıp modu açık.</b> Bilgisayar şu an bağlı değil. Açılıp internete bağlandığı anda ekran görüntüsü, kamera fotoğrafı ve konum gönderip kilitleyeceğim.",
+      "Bilgisayar açık kaldıkça bunu 15 dakikada bir tekrarlarım. Bulunca: <code>/pc bulundu</code>",
+      "",
+      "Çalındıysa önce polise başvur, bu bilgileri onlara verebilirsin. Bilgisayarı kendin geri almaya çalışma.",
+    ].join("\n");
+  }
+  if (p.local === "found") {
+    const r = await ctx.pc.call("lost", { on: false });
+    return r.stopped ? "✅ Kayıp modunu kapattım. Bilgisayar artık kendiliğinden fotoğraf ve konum göndermeyecek." : "Kayıp modu zaten kapalı.";
+  }
   const r = await ctx.pc.call("send", p.job);
   if (!r.paired) return NOT_PAIRED;
   if (!r.online) return OFFLINE;
   if (r.timeout) return "🖥 İşi bilgisayara ilettim ama henüz cevap gelmedi. Biraz sonra sonucu yazar.";
-  return r.reply ? esc(r.reply) : "";
+  const text = r.reply ? esc(r.reply) : "";
+  if (p.job.is !== "konum") return text;
+  const line = placeLine((await ctx.pc.call("where")).where);
+  return [text, line].filter(Boolean).join("\n");
 }
 
-async function telegramSend(env, text) {
+// Worker'ın gördüğü bağlantı bilgisi: IP ve Cloudflare'in IP'den tahmin ettiği şehir. Yalnızca sahibine yazılır, loglanmaz.
+export function placeOf(request) {
+  const cf = request.cf ?? {};
+  const num = (v) => (v === undefined || v === null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  return {
+    ip: request.headers.get("CF-Connecting-IP") ?? null, city: cf.city ?? null, region: cf.region ?? null,
+    country: cf.country ?? null, lat: num(cf.latitude), lon: num(cf.longitude), org: cf.asOrganization ?? null,
+  };
+}
+
+export function parseWhere(header) {
   try {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const w = JSON.parse(decodeURIComponent(header ?? ""));
+    if (!w || typeof w !== "object") return null;
+    const str = (v) => (v === null || v === undefined || v === "" ? null : String(v).slice(0, 80));
+    const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const out = { ip: str(w.ip), city: str(w.city), region: str(w.region), country: str(w.country), lat: num(w.lat), lon: num(w.lon), org: str(w.org) };
+    return out.ip || out.city || out.country ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+const hhmm = (ms) => { const p = trParts(ms); return `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}`; };
+
+// "🌐 İnternet bağlantısına göre ..." satırı (Telegram HTML)
+export function placeLine(w) {
+  if (!w) return null;
+  const names = [...new Set([w.city, w.region].filter(Boolean))];
+  const place = [...names, w.country].filter(Boolean).join(", ") || "yer bilinmiyor";
+  const map = w.lat !== null && w.lon !== null && w.lat !== undefined && w.lon !== undefined
+    ? ` · <a href="https://maps.google.com/?q=${w.lat},${w.lon}">haritada</a>` : "";
+  const extra = [w.org, w.ip ? `IP ${w.ip}` : null].filter(Boolean).map(esc).join(" · ");
+  const when = w.at ? ` (${hhmm(w.at)} bağlantısı)` : "";
+  return `🌐 İnternet bağlantısına göre, şehir düzeyinde: ${esc(place)}${map}${extra ? `\n${extra}` : ""}${when}`;
+}
+
+async function telegramSend(env, text, fetcher = fetch, extra = {}) {
+  try {
+    await fetcher(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra }),
     });
   } catch (err) {
     console.error("bilgisayar mesajı gönderilemedi", err?.message);
@@ -176,6 +244,10 @@ export class PcHub {
     this.waiting = new Map();
     this.wait = WAIT_MS;
     this.slowWait = SLOW_WAIT_MS;
+    this.lostWait = LOST_WAIT_MS;
+    this.lostEvery = LOST_EVERY_MS;
+    this.lostDelay = LOST_DELAY_MS;
+    this.findEvery = FIND_EVERY_MS;
     // Programın 30 saniyede bir gönderdiği "ping"e Cloudflare uyandırmadan "pong" der.
     if (typeof WebSocketRequestResponsePair !== "undefined" && state.setWebSocketAutoResponse) {
       state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -183,6 +255,10 @@ export class PcHub {
   }
 
   // "pc": bilgisayardaki program, "app": telefondaki Jarvis uygulaması
+  tg(text, extra) {
+    return telegramSend(this.env, text, this.tgFetch ?? fetch, extra);
+  }
+
   sockets(tag = "pc") {
     return this.state.getWebSockets?.(tag) ?? [];
   }
@@ -287,39 +363,60 @@ export class PcHub {
     if (op === "find") {
       const subs = (await storage.get("subs")) ?? [];
       if (!subs.length) return { subs: 0, sent: 0 };
-      await storage.put("find", { until: Date.now() + FIND_MS, n: 0 });
+      await storage.put("find", { until: Date.now() + FIND_MS, n: 0, next: Date.now() });
       const sent = await this.findRing();
       return { subs: subs.length, sent };
     }
     if (op === "findstop") {
       const had = Boolean(await storage.get("find"));
       await storage.delete("find");
-      await this.state.storage.deleteAlarm?.();
+      await this.schedule();
       if (had) this.broadcast({ tip: "bulundu" });
       return { stopped: had };
     }
+    // Kayıp/çalıntı modu: bilgisayar bağlı kaldıkça aralıklarla fotoğraf, konum ve kilit
+    if (op === "lost") {
+      const paired = Boolean(await storage.get("token"));
+      if (!body.on) {
+        const had = Boolean((await storage.get("lost"))?.on);
+        await storage.delete("lost");
+        await this.schedule();
+        return { paired, stopped: had };
+      }
+      if (!paired) return { paired: false };
+      const online = this.sockets().length > 0;
+      await storage.put("lost", { on: true, since: Date.now(), n: 0, next: online ? Date.now() + 1000 : null });
+      await this.schedule();
+      return { paired, online };
+    }
+    if (op === "where") return { where: (await storage.get("where")) ?? null, lost: Boolean((await storage.get("lost"))?.on) };
     if (op === "status") {
       return { paired: Boolean(await storage.get("token")), online: this.sockets().length > 0 };
     }
     if (op === "send") {
       if (!(await storage.get("token"))) return { paired: false };
-      const ws = this.sockets().at(-1);
-      if (!ws) return { paired: true, online: false };
-      const id = crypto.randomUUID().slice(0, 8);
-      const reply = new Promise((resolve) => {
-        const timer = setTimeout(() => { this.waiting.delete(id); resolve(null); }, ["ekran"].includes(body.is) ? this.slowWait : this.wait);
-        this.waiting.set(id, (text) => { clearTimeout(timer); this.waiting.delete(id); resolve(text); });
-      });
-      try {
-        ws.send(JSON.stringify({ id, is: String(body.is ?? ""), arg: String(body.arg ?? "") }));
-      } catch {
-        this.waiting.get(id)?.(null);
-        return { paired: true, online: false };
-      }
-      const text = await reply;
-      return text === null ? { paired: true, online: true, timeout: true } : { paired: true, online: true, reply: text };
+      return { paired: true, ...(await this.ask(body, SLOW_JOBS.includes(body.is) ? this.slowWait : this.wait)) };
     }
     return { error: "bilinmeyen iş" };
+  }
+
+  // Bağlı bilgisayara bir iş gönderir ve cevabını bekler: { online, reply } | { online, timeout } | { online: false }
+  async ask(job, ms) {
+    const ws = this.sockets().at(-1);
+    if (!ws) return { online: false };
+    const id = crypto.randomUUID().slice(0, 8);
+    const reply = new Promise((resolve) => {
+      const timer = setTimeout(() => { this.waiting.delete(id); resolve(null); }, ms);
+      this.waiting.set(id, (text) => { clearTimeout(timer); this.waiting.delete(id); resolve(text); });
+    });
+    try {
+      ws.send(JSON.stringify({ id, is: String(job.is ?? ""), arg: String(job.arg ?? "") }));
+    } catch {
+      this.waiting.get(id)?.(null);
+      return { online: false };
+    }
+    const text = await reply;
+    return text === null ? { online: true, timeout: true } : { online: true, reply: text };
   }
 
   async pair(request) {
@@ -349,12 +446,26 @@ export class PcHub {
     this.closeAll(4000, "yeni bağlantı");   // aynı bilgisayar yeniden bağlandıysa eski bağlantı bırakılır
     const pair = new WebSocketPair();
     this.state.acceptWebSocket(pair[1], ["pc"]);
-    this.broadcast({ tip: "pc", online: true });
-    if (await this.state.storage.get("announce")) {
-      await this.state.storage.delete("announce");
-      await telegramSend(this.env, "🖥 Bilgisayarın Jarvis'e bağlandı. Denemek için: <code>/pc</code> ya da \"bilgisayarı kilitle\". Bütün komutlar: <code>/pc yardım</code>");
-    }
+    await this.connected(request);
     return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  // Bilgisayar bağlandı: yaklaşık yeri saklanır (kayıp modu için), kayıp modu açıksa rapor kurulur.
+  async connected(request) {
+    const storage = this.state.storage;
+    this.broadcast({ tip: "pc", online: true });
+    const where = parseWhere(request.headers.get(WHERE_HEADER));
+    if (where) await storage.put("where", { ...where, at: Date.now() });
+    if (await storage.get("announce")) {
+      await storage.delete("announce");
+      await this.tg("🖥 Bilgisayarın Jarvis'e bağlandı. Denemek için: <code>/pc</code> ya da \"bilgisayarı kilitle\". Bütün komutlar: <code>/pc yardım</code>");
+    }
+    const lost = await storage.get("lost");
+    if (lost?.on) {
+      lost.next = Date.now() + this.lostDelay;
+      await storage.put("lost", lost);
+      await this.schedule();
+    }
   }
 
   async webSocketMessage(ws, message) {
@@ -372,7 +483,7 @@ export class PcHub {
     const text = String(data.metin ?? "").slice(0, 3500);
     const resolve = this.waiting.get(data.id);
     if (resolve) resolve(text);
-    else if (text) await telegramSend(this.env, esc(text));   // geç gelen cevap: doğrudan sohbete
+    else if (text) await this.tg(esc(text));   // geç gelen cevap: doğrudan sohbete
   }
 
   async webSocketClose(ws, code, reason) {
@@ -412,6 +523,7 @@ export class PcHub {
       return 0;
     }
     find.n += 1;
+    find.next = Date.now() + this.findEvery;   // sonuncudan sonraki uyanışta silinir
     await storage.put("find", find);
     const { sent } = await this.pushAll({
       title: "📍 Buradayım!",
@@ -420,12 +532,65 @@ export class PcHub {
       tag: `bul-${find.n}`,
       bul: true,
     });
-    if (find.n < FIND_RINGS) await storage.setAlarm?.(Date.now() + FIND_EVERY_MS);
+    await this.schedule();
     return sent;
   }
 
+  // Kayıp modu raporu: ekran görüntüsü, kamera fotoğrafı, konum, sonra kilit. Bilgisayar bağlı değilse
+  // bir sonraki bağlantıyı bekler. Fotoğrafları program kendisi gönderir; konum ve kilit cevabı burada toplanır.
+  async lostRun() {
+    const storage = this.state.storage;
+    const lost = await storage.get("lost");
+    if (!lost?.on) return false;
+    if (!this.sockets().length) {
+      lost.next = null;
+      await storage.put("lost", lost);
+      return false;
+    }
+    lost.n += 1;
+    lost.next = Date.now() + this.lostEvery;
+    await storage.put("lost", lost);
+    const time = hhmm(Date.now());
+    const steps = [];
+    for (const [job, ms] of [[{ is: "ekran" }, this.slowWait], [{ is: "kamera", arg: `📷 Kayıp modu · ${time}` }, this.lostWait],
+      [{ is: "konum" }, this.lostWait], [{ is: "kilitle" }, this.wait]]) {
+      const r = await this.ask(job, ms);
+      steps.push(r);
+      if (!r.online) break;
+    }
+    const [screen, camera, place, lock] = steps;
+    const quiet = isQuiet(Date.now());
+    const lines = [`🚨 <b>Kayıp modu</b> · ${lost.n}. rapor · ${time}`];
+    const said = (r) => (r?.reply ? esc(r.reply) : null);
+    lines.push(said(place) ?? "📍 Bilgisayardan konum gelmedi.");
+    const ip = placeLine(await storage.get("where"));
+    if (ip) lines.push(ip);
+    for (const r of [screen, camera]) if (r?.reply && !lines.includes(esc(r.reply))) lines.push(esc(r.reply));   // fotoğraf gönderilemediyse nedeni
+    lines.push(lock?.reply ? "🔒 Bilgisayarı kilitledim." : "🔒 Kilitleme cevabı gelmedi.");
+    lines.push("", steps.length < 4 ? "Bilgisayarın bağlantısı koptu; yeniden bağlanınca devam ederim." : "15 dakika sonra yeniden bakarım. Bulunca: <code>/pc bulundu</code>");
+    await this.tg(lines.join("\n"), quiet ? { disable_notification: true } : {});
+    await this.pushAll({ title: "🚨 Kayıp modu", body: `${lost.n}. rapor geldi (${time}). Ayrıntı Telegram'da.`, url: "/panel", tag: "kayip" });
+    return true;
+  }
+
+  // Durable Object'in tek alarmı: telefonumu bul ve kayıp modu sırası gelen işi yapar, sonra en yakın işe kurulur.
   async alarm() {
-    await this.findRing();
+    const storage = this.state.storage;
+    const now = Date.now() + 500;
+    const find = await storage.get("find");
+    if (find?.next !== null && find?.next !== undefined && find.next <= now) await this.findRing();
+    const lost = await storage.get("lost");
+    if (lost?.on && lost.next !== null && lost.next !== undefined && lost.next <= now) await this.lostRun();
+    await this.schedule();
+  }
+
+  async schedule() {
+    const storage = this.state.storage;
+    const find = await storage.get("find");
+    const lost = await storage.get("lost");
+    const times = [find?.next, lost?.on ? lost.next : null].filter((t) => typeof t === "number");
+    if (times.length) await storage.setAlarm?.(Math.min(...times));
+    else await storage.deleteAlarm?.();
   }
 
   async vapid() {
@@ -468,6 +633,7 @@ export class PcHub {
     const form = new FormData();
     form.append("chat_id", String(this.env.TELEGRAM_CHAT_ID));
     if (caption) form.append("caption", caption);
+    if (isQuiet(Date.now())) form.append("disable_notification", "true");   // gece sessiz
     form.append(asPhoto ? "photo" : "document", blob, name);
     const res = await fetch(`https://api.telegram.org/bot${this.env.TELEGRAM_BOT_TOKEN}/${asPhoto ? "sendPhoto" : "sendDocument"}`, { method: "POST", body: form });
     if (!res.ok) {
