@@ -26,15 +26,19 @@ export const TRAM_HELP = [
 ].join("\n");
 
 // Varış isteği: site tarayıcının "HatTuru=2" (tramvay) çerezine bakıyor; çerezsiz istek 500 veriyor.
-// İsteğin tam biçimi belgeli olmadığı için birkaç biçim sırayla denenir; çalışan biçim bir gün hatırlanır.
+// İsteğin tam biçimi belgeli olmadığı için birkaç POST biçimi sırayla denenir; çalışan biçim bir gün hatırlanır.
+// (GET isteği veri değil, sitenin normal sayfasını döndürüyor; o yüzden denenmez.)
+// Site bazı duraklarda (ör. hat sonu ya da teknik duraklar) her biçime 500 veriyor: bu "veri yok" sayılır.
 const ARRIVAL_COOKIE = "dil=tr; HatTuru=2";
 const ARRIVAL_REFERER = `${BASE}/OtobusTramvayHatlariHatDetay/HatDetay/1/?HAT_TURU=TRAMVAY&&HAT_YON=ARRIVAL`;
 export const ARRIVAL_VARIANTS = [
   { label: "çerez", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
   { label: "çerez + JSON", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/json; charset=utf-8" }, body: "{}" } },
   { label: "çerez + form", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: "" } },
-  { label: "GET", init: { method: "GET", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
 ];
+
+const NO_DATA_TTL = 300;                              // 500 veren durak 5 dakika yeniden sorulmaz
+const TECHNICAL = /makas/i;                           // "Makas Bölgesi" gibi yolcu durağı olmayan noktalar konum aramasında atlanır
 
 export const isGuid = (id) => GUID.test(String(id ?? ""));
 export const tramMapUrl = (line, dir) => `${BASE}/OtobusTramvayHatlari/OtobusDuraklariHaritaJSON?lineId=${encodeURIComponent(line)}&directions=${dir}`;
@@ -128,23 +132,36 @@ export async function fetchTramArrivals(ctx, id) {
   if (!isGuid(id)) throw new Error("geçersiz durak");
   const name = `tramvay:${id}`;
   const hit = await ctx.cache?.get(name).catch(() => null);
+  if (hit === "yok") throw noData();
   if (hit) return hit;
   const known = Number(await ctx.cache?.get("tramvay:bicim").catch(() => null));
   const order = Number.isInteger(known) && ARRIVAL_VARIANTS[known] ? [known, ...ARRIVAL_VARIANTS.keys()].filter((v, i, a) => a.indexOf(v) === i) : [...ARRIVAL_VARIANTS.keys()];
-  let last = null;
+  let last = null, all500 = true;
   for (const v of order) {
     try {
       const res = await ctx.webFetch(tramArrivalsUrl(id), ARRIVAL_VARIANTS[v].init);
+      if (res.status !== 500) all500 = false;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const list = parseTramArrivals(await res.json());
       if (v !== known) await ctx.cache?.put("tramvay:bicim", v, 24 * 3600).catch(() => {});
       await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
       return list;
     } catch (err) {
+      if (!/^HTTP /.test(String(err?.message))) all500 = false;   // ağ hatası ya da JSON olmayan yanıt
       last = err;   // bu biçim çalışmadı (ya da hatırlanan biçim artık çalışmıyor): sıradakini dene
     }
   }
+  if (all500) {
+    await ctx.cache?.put(name, "yok", NO_DATA_TTL).catch(() => {});
+    throw noData();
+  }
   throw last ?? new Error("tramvay varışı alınamadı");
+}
+
+function noData() {
+  const err = new Error("durak için veri yok");
+  err.noData = true;
+  return err;
 }
 
 const metres = (km) => (km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(1)} km`);
@@ -172,6 +189,10 @@ async function stopsText(ctx, stops) {
     try {
       out.push(formatTram(s, await fetchTramArrivals(ctx, s.id), ctx.now));
     } catch (err) {
+      if (err?.noData) {
+        out.push(`🚋 <b>${esc(s.name)}</b>: Kayseri Ulaşım bu durak için şu an varış bilgisi vermiyor (hat sonu ya da sefer dışı olabilir). Bir sonraki durağı dener misin?`);
+        continue;
+      }
       console.error("tramvay bilgisi alınamadı", err?.message);
       out.push(`🚋 <b>${esc(s.name)}</b>: Kayseri Ulaşım'a şu an ulaşamadım, birazdan yeniden dener misin?`);
     }
@@ -183,7 +204,7 @@ async function stopsText(ctx, stops) {
 export function nearestTram(index, here, maxKm = NEAR_KM) {
   const all = Object.entries(index.stops)
     .map(([id, [name, lat, lon]]) => ({ id, name, km: distanceKm(here, { lat, lon }) }))
-    .filter((s) => s.km <= maxKm)
+    .filter((s) => s.km <= maxKm && !TECHNICAL.test(s.name))
     .sort((a, b) => a.km - b.km);
   if (!all.length) return [];
   return all.filter((s) => s === all[0] || (s.name === all[0].name && s.km - all[0].km < 0.25)).slice(0, 2);
@@ -219,16 +240,24 @@ export function findTramStops(index, query) {
   return [];
 }
 
-async function tramTest(ctx, index) {
-  const id = Object.keys(index.stops)[0];
+// Test: harita + birkaç durağın varışı (ilk istek biçimiyle). "/tramvay test ildem" yalnız o durağı dener.
+function testStops(index, query) {
+  if (query) return findTramStops(index, query).slice(0, 2);
+  const all = Object.entries(index.stops).map(([id, [name]]) => ({ id, name }));
+  const pick = [all.find((s) => /^[İi]ldem/.test(s.name)), all[Math.floor(all.length / 2)], all[all.length - 1]];
+  return pick.filter((s, i) => s && pick.findIndex((x) => x?.id === s.id) === i);
+}
+
+async function tramTest(ctx, index, query) {
   const probes = [["Durak haritası (T1)", tramMapUrl("T1", 2), { headers: HEADERS }]];
-  if (id) for (const v of ARRIVAL_VARIANTS) probes.push([`Varış süreleri (${v.label}) · ${esc(index.stops[id][0])}`, tramArrivalsUrl(id), v.init]);
+  for (const s of testStops(index, query)) probes.push([`Varış · ${esc(s.name)}`, tramArrivalsUrl(s.id), ARRIVAL_VARIANTS[0].init]);
+  if (query && probes.length === 1) return `"${esc(query)}" adında tramvay durağı bulamadım.`;
   const out = ["🔧 <b>Tramvay testi</b>"];
   for (const [label, url, init] of probes) {
     try {
       const res = await ctx.webFetch(url, init);
       const body = await res.text();
-      out.push(`<b>${label}</b>: HTTP ${res.status} · ${body.length} karakter\n<code>${esc(body.slice(0, 160))}</code>`);
+      out.push(`<b>${label}</b>: HTTP ${res.status} · ${body.length} karakter\n<code>${esc(body.slice(0, 120))}</code>`);
     } catch (err) {
       out.push(`<b>${label}</b>: ulaşılamadı (${esc(String(err?.message ?? err).slice(0, 80))})`);
     }
@@ -244,7 +273,7 @@ export async function cmdTramvay(args, ctx) {
     return "📍 Konumunu gönderirsen en yakın tramvay ve otobüs durağını gösteririm: Telegram'da 📎 → <b>Konum</b>; panelde 🚌 düğmesi.";
   }
   const index = await tramIndex(ctx);
-  if (first === "test") return tramTest(ctx, index);
+  if (first === "test") return tramTest(ctx, index, raw.split(" ").slice(1).join(" "));
   const names = [...new Set(Object.values(index.stops).map((s) => s[0]))];
   if (!names.length) return "Tramvay duraklarını şu an Kayseri Ulaşım'dan alamadım. Birazdan yeniden dener misin?";
   if (!raw || ["duraklar", "liste", "hepsi"].includes(first)) {
