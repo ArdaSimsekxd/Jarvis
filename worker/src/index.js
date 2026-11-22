@@ -14,7 +14,9 @@ import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
 import { cmdEczane } from "./pharmacy.js";
 import { busLocation, cmdOtobus, crawlBus } from "./bus.js";
+import { cmdTramvay, crawlTram } from "./tram.js";
 import { cmdAklimda } from "./aklimda.js";
+import { MAX_ANI_BYTES, aniCaption, cmdAni, loadAni, saveAni, savedText } from "./ani.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -351,7 +353,9 @@ async function runCommand(cmd, ctx) {
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
   if (["otobus", "otobüs", "durak", "otobusler"].includes(cmd.command)) return cmdOtobus(cmd.args, ctx);
+  if (["tramvay", "tram", "tramvaylar"].includes(cmd.command)) return cmdTramvay(cmd.args, ctx);
   if (["aklimda", "aklımda", "yapilacak", "yapilacaklar", "todo"].includes(cmd.command)) return cmdAklimda(cmd.args, ctx);
+  if (["ani", "anı", "anilar", "anılar", "anidefteri"].includes(cmd.command)) return cmdAni(cmd.args, ctx);
   if (["kisilik", "kişilik", "jarvis"].includes(cmd.command)) return cmdKisilik(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
@@ -392,6 +396,9 @@ export function pickPhoto(sizes) {
 async function handlePhoto(message, ctx) {
   const largest = message.photo[message.photo.length - 1];
   const size = pickPhoto(message.photo);
+  // Altında "anı" yazan fotoğraf hafızaya değil, anı defterine gider
+  const ani = aniCaption(message.caption, ctx.now);
+  if (ani && ctx.tgFile) return void await saveAniPhoto(message.photo, ani, ctx);
   await ctx.typing?.();
   let seen = null;
   if (ctx.ai) {
@@ -417,6 +424,20 @@ async function handlePhoto(message, ctx) {
     const context = noteData(note).split("\n").slice(1).join("\n") + (receipt ? "\n(Bu fiş harcama olarak zaten kaydedildi.)" : "");
     await deliver(ctx, await converse(caption, { ...ctx, reminders: () => listReminders(ctx.kv) }, (c) => runCommand(c, ctx),
       { context, quiet: true, skip: receipt ? ["harcama_ekle"] : [] }));
+  }
+}
+
+async function saveAniPhoto(sizes, ani, ctx) {
+  const fits = [...sizes].filter((p) => (p.file_size ?? 0) <= MAX_ANI_BYTES).sort((a, b) => (a.width ?? 0) - (b.width ?? 0));
+  const size = fits[fits.length - 1];
+  if (!size) return void await ctx.send("Bu fotoğraf anı defteri için çok büyük. Normal fotoğraf olarak (dosya değil) gönderir misin?");
+  try {
+    const r = await saveAni(ctx.kv, ani.day, await ctx.tgFile(size.file_id, MAX_ANI_BYTES), ani.caption, ctx.now);
+    if (r.error) return void await ctx.send(r.error);
+    await ctx.send(savedText(ani.day, r, await loadAni(ctx.kv), ctx.now));
+  } catch (err) {
+    console.error("anı fotoğrafı kaydedilemedi", err?.message);
+    await ctx.send("Fotoğrafı anı defterine kaydedemedim. Birazdan yeniden gönderir misin?");
   }
 }
 
@@ -559,6 +580,7 @@ function context(env, now = Date.now(), origin = null) {
       transcribe: (fileId) => transcribe(env, fileId),
       see: (fileId) => see(env, fileId),
     } : null,
+    tgFile: (fileId, maxBytes) => telegramFile(env, fileId, maxBytes),
     fetchMenu: () => fetchMenu(env),
     dispatch: env.GH_TOKEN && env.GITHUB_REPO ? (job) => dispatchWorkflow(env, job) : null,
     canvas: env.CANVAS_TOKEN && env.CANVAS_BASE_URL ? (path) => canvasGet(env, path) : null,
@@ -670,6 +692,7 @@ export default {
       checkQuakes(c).catch((err) => console.error("deprem kontrolü çalışmadı", err?.message)),
       checkCargo(c).catch((err) => console.error("kargo kontrolü çalışmadı", err?.message)),
       crawlBus(c).catch((err) => console.error("durak taraması çalışmadı", err?.message)),
+      crawlTram(c).catch((err) => console.error("tramvay taraması çalışmadı", err?.message)),
     ]).then(() => pushToApp(env, said)));
   },
 };

@@ -1,6 +1,7 @@
 // Jarvis paneli: Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı sayfa.
 // Sayfanın kendisi veri içermez; veriler yalnızca gizli anahtarla (/panel komutunun verdiği bağlantı) okunur.
 import { addItem, doneById, loadItems } from "./aklimda.js";
+import { MAX_ANI_BYTES, aniImage, aniList, aniSummary, dropAni, isJpeg, loadAni, saveAni, setCaption, validDay } from "./ani.js";
 import { MAIL_KEY, WEEKDAYS, dateKey, esc, isMissing, isSubmitted, plain, trParts, trToMs } from "./logic.js";
 import { CATEGORIES, loadBudget, loadMonth, monthKey } from "./expenses.js";
 import { loadMemory } from "./memory.js";
@@ -173,6 +174,7 @@ export async function buildPanel(ctx, src) {
       loadBudget(ctx.kv), readJson(ctx.kv, MAIL_KEY), src.names().catch(() => ({})), src.menu().catch(() => null),
     ]);
     const aklimda = (await loadItems(ctx.kv)).map((i) => ({ id: i.id, text: i.text, at: i.at }));
+    const ani = aniSummary(await loadAni(ctx.kv), now);
     const fitness = wantedSlots(fit.rules, now).filter((s) => fit.slots[s.key]?.ref);
     const p = trParts(now);
     return {
@@ -180,6 +182,7 @@ export async function buildPanel(ctx, src) {
       upcoming: upcomingItems({ notes: mem.notes, reminders, fitness }, now),
       reminders: reminderItems(reminders, now),
       aklimda,
+      ani,
       expenses: expenseSummary(month, budget, now),
       mails: mailList(mails?.mails),
       menu: menuItems(menu, trToMs(p.y, p.m, p.d)),
@@ -383,6 +386,45 @@ export async function handlePanel(request, ctx, src) {
     }
     await ctx.pc?.call("notify").catch(() => {});
     return json({ ok: true });
+  }
+  // Anı defteri: sayfa listesi, fotoğraflar, ekle/değiştir/sil. Fotoğraflar yalnızca anahtarla okunur.
+  if (path === "/panel/ani" || path === "/panel/ani/foto") {
+    if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
+    const day = new URL(request.url).searchParams.get("d");
+    if (path === "/panel/ani/foto" && request.method === "GET") {
+      const bytes = validDay(day, ctx.now) ? await aniImage(ctx.kv, day) : null;
+      if (!bytes) return new Response("yok", { status: 404 });
+      return new Response(bytes, {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable", "X-Robots-Tag": "noindex" },
+      });
+    }
+    if (path !== "/panel/ani") return null;
+    if (request.method === "GET") return json({ days: aniList(await loadAni(ctx.kv)) });
+    if (Number(request.headers.get("Content-Length") ?? 0) > MAX_ANI_BYTES * 1.4 + 4096) return json({ error: "Fotoğraf çok büyük." }, 413);
+    const body = await request.json().catch(() => ({}));
+    const d = String(body.d ?? "");
+    if (!validDay(d, ctx.now)) return json({ error: "Bu tarih olmaz (gelecekteki bir güne anı eklenemez)." }, 400);
+    let ok;
+    if (request.method === "DELETE") {
+      ok = await dropAni(ctx.kv, d);
+    } else if (request.method === "POST" && body.img) {
+      let bytes;
+      try {
+        bytes = Uint8Array.from(atob(String(body.img)), (c) => c.charCodeAt(0));
+      } catch {
+        return json({ error: "Fotoğraf okunamadı." }, 400);
+      }
+      if (!isJpeg(bytes)) return json({ error: "Fotoğraf okunamadı." }, 400);
+      const r = await saveAni(ctx.kv, d, bytes, body.cap, ctx.now);
+      if (r.error) return json({ error: r.error }, 400);
+      ok = true;
+    } else if (request.method === "POST") {
+      ok = await setCaption(ctx.kv, d, body.cap);
+    } else {
+      return null;
+    }
+    if (ok) await ctx.pc?.call("notify").catch(() => {});
+    return json({ ok }, ok ? 200 : 404);
   }
   if (path === "/panel/reminder" && request.method === "DELETE") {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);

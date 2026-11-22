@@ -100,6 +100,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - bekleyen ve geciken ödevler (geri sayımla)
 - mail ve duyurulardan bulunan tarihler, hatırlatmalar ve fitness randevuları
 - **Aklımda:** saati olmayan yapılacaklar listesi; kartın içinden yazıp ekle, yapınca ✓'ye dokun
+- **Anı defteri:** her güne bir fotoğraf ve kısa not. 📷 ile bugünün fotoğrafını ekle, 📖 Defteri aç ile sayfaları parmağınla çevir (sayfa sesi 🔊 ile kapatılabilir). Fotoğraf telefonda ~1440 px'e küçültülür, KV'de günde bir kayıt olarak durur ve yalnızca panel anahtarıyla görülür
 - bütün bekleyen hatırlatmalar ayrı bir kartta (SİL'e iki kez dokununca silinir, "+ EKLE" sohbet kutusuna götürür)
 - bu ayın harcaması ve bütçe göstergesi
 - son mailler ve yemekhane menüsü
@@ -121,6 +122,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
   - **İsteğe bağlı otomatik takip:** 17TRACK API anahtarın olursa (`TRACK17_KEY` secret'ı) Jarvis durumu yarım saatte bir kendisi okur. Kargo yola çıkınca, dağıtıma çıkınca ve teslim edilince haber verir.
 - **Nöbetçi eczane:** `/eczane` (ya da "açık eczane var mı?") Kayseri merkezde (Melikgazi, Kocasinan, Talas) o gece nöbetçi olan eczaneleri adres, telefon ve harita bağlantısıyla verir. `/eczane talas` tek ilçeyi, `/eczane hepsi` bütün ilçeleri gösterir. Liste haber sitelerinin herkese açık nöbetçi eczane sayfalarından okunur (Posta, olmazsa Sabah, Habertürk, Gazete Vatan). Sabah 09:00'a kadar dün akşam başlayan nöbet listesi gösterilir. Bulunan liste o geceye ait değilse uyarı yazılır. Gitmeden önce aramak iyi olur. Kurulum gerekmez.
 - **Otobüs (Kayseri):** `/otobus 7548` bir durağa yaklaşan otobüsleri ve kaç dakikada geleceklerini gösterir (durak numarası tabelada ve kayseriulasim.com'da yazar). `/otobus ekle 7548 okul` durağı adıyla kaydeder, sonra `/otobus okul` ya da "okul durağına otobüs ne zaman gelir?" yeter. `/otobus ara erkilet` durak arar. **Konumuna göre:** Telegram'da 📎 → Konum → Mevcut konumumu gönder, ya da panelde 🚌 düğmesi: en yakın durağa gelen otobüsler gelir. Konum saklanmaz. Durakların yeri hat hat öğrenilir: bir durağı numarasıyla sorunca oraya uğrayan hatların bütün durakları hemen öğrenilir. Ayrıca Jarvis 10 dakikada bir birkaç istekle şehrin hatlarını ve duraklarını arka planda tarar; hepsini tanıyınca durur, hatları iki haftada bir yeniler. En yakın bildiği durak 200 m'den uzaksa bunu söyler; o zaman tabeladaki numarayı bir kez sor. Veri Kayseri Ulaşım'ın sitesinin kullandığı adreslerden gelir; resmi bir API değildir, site değişirse `worker/src/bus.js` güncellenmeli. Kurulum gerekmez.
+- **Tramvay (Kayseri):** `/tramvay ildem` o durağa tramvayların kaç dakikada geleceğini gösterir (`~` işaretliler canlı değil, tarifeye göre). `/tramvay duraklar` bütün durakları listeler. Konum gönderince (ya da panelde 🚌) yakında bir tramvay durağı varsa o da gösterilir; daha yakınsa önce o. Tramvay durakları T1, T2, T3 hatlarının haritasından alınır (6 istek), iki haftada bir yenilenir (`worker/src/tram.js`). Varış süreleri sitenin tramvay sayfasının kullandığı adresten gelir.
 - **Telefonumu bul:** `/bul` (ya da "telefonumu bulamıyorum") yazınca iPhone'daki Jarvis uygulamasına 3 dakika boyunca 20 saniyede bir bildirim gider. Bulunca bildirime dokun, durur (`/bul dur` da olur). Bilgisayardan da çalışır: Telegram Desktop'tan yaz ya da paneli bilgisayarda açıp "📱 Telefonumu bul"a bas. Uygulamada bildirimlerin açık olması gerekir. Telefon sessizdeyse yalnızca titrer; sessizdeyken de ses çıkarması için [iCloud Bul](https://www.icloud.com/find) sayfasındaki "Ses Çal" kullanılmalı.
 
 ## Komutlar
@@ -152,7 +154,9 @@ Telegram'da Jarvis botuna yazılır:
 | `/deprem` | Son depremler ve uyarı ayarları; `/deprem ekle İzmir`, `/deprem esik 4`, `/deprem kapat` |
 | `/kargo 123456789012 kulaklık` | Kargoyu kaydeder, takip bağlantısını verir, her sabah hatırlatır; `/kargo` hepsi, `/kargo geldi 1` |
 | `/eczane` | Kayseri'de bu gece nöbetçi eczaneler; `/eczane talas`, `/eczane hepsi` |
+| Fotoğraf + altına `anı ...` | Fotoğraf hafızaya değil anı defterine gider (o günün sayfası; aynı gün yeniden gönderirsen değişir). `anı dün ...` dünün sayfası olur. `/ani` son sayfalar ve seri, `/ani sil bugün` siler. Noktasız "ani" (ani yağmur) sayılmaz |
 | `/aklimda süt al` | Saati olmayan yapılacaklar listesi; `/aklimda` liste, `/aklimda bitti 1` ya da `/aklimda bitti süt`. "Aklımda kalsın, kitabı iade edeceğim" gibi cümleler de olur; saat söylemeden "hatırlat" dersen de buraya eklenir |
+| `/tramvay ildem` | Tramvay kaç dakikada gelir; `/tramvay duraklar` |
 | `/otobus 7548` | Durağa yaklaşan otobüsler ve kaç dakika; `/otobus ekle 7548 okul`, `/otobus okul`, `/otobus ara erkilet`; konum gönderince en yakın durak |
 | `/bul` | Telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika bildirimle çalar; `/bul dur` |
 | `/kisilik` | Jarvis'in "efendim" diyen, ara sıra espri yapan konuşma tarzı (varsayılan açık); `/kisilik kapat` ile düz cevaplar |
@@ -288,6 +292,7 @@ worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocke
 worker/src/quake.js           Deprem uyarısı (AFAD, yedekte EMSC ve USGS)
 worker/src/pharmacy.js        Nöbetçi eczaneler (haber sitelerinin listeleri)
 worker/src/aklimda.js         Aklımda: saati olmayan yapılacaklar listesi
+worker/src/ani.js             Anı defteri: günde bir fotoğraf (KV), seri, /ani
 worker/src/bus.js             Otobüs geliş süreleri ve en yakın durak (kayseriulasim.com)
 worker/src/cargo.js           Kargo takibi (bağlantı + hatırlatma; anahtar varsa 17TRACK)
 worker/src/panel.js           Jarvis paneli ve iPhone uygulaması: veriler, giriş, sohbet; sayfası panel_page.js
