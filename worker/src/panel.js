@@ -175,12 +175,14 @@ export async function buildPanel(ctx, src) {
   });
 
   const pcPart = ctx.pc ? ctx.pc.call("status").catch(() => null) : Promise.resolve(null);
-  const [canvas, data, pc] = await Promise.all([canvasPart, dataPart, pcPart]);
+  const filesPart = ctx.pc ? ctx.pc.call("files").then((r) => r.files ?? []).catch(() => []) : Promise.resolve([]);
+  const [canvas, data, pc, files] = await Promise.all([canvasPart, dataPart, pcPart, filesPart]);
   return {
     now, greeting: greeting(now),
     homework: canvas.homework, canvas: canvas.ok,
     ...data,
     pc: pc ? { paired: Boolean(pc.paired), online: Boolean(pc.online) } : null,
+    files,
   };
 }
 

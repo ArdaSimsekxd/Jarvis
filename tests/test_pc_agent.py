@@ -74,6 +74,32 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(pc.parse_ssid(netsh), "Ev Agi 5G")
         self.assertIsNone(pc.parse_ssid("There is no wireless interface on the system."))
 
+    def test_find_files_by_similar_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "Okul" / "Devre").mkdir(parents=True)
+            (root / "node_modules").mkdir()
+            (root / ".gizli").mkdir()
+            for rel in ["Okul/Devre/Devre_Raporu_v2.pdf", "Okul/devre-lab-foyu.pdf", "Fizik Ödevi 3.docx",
+                        "Okul/DigitalDesignHW4.pdf", "node_modules/devre raporu.pdf", ".gizli/devre raporu.pdf", "~$Devre Raporu.docx"]:
+                (root / rel).write_bytes(b"x")
+            files = pc.walk_files([root])
+            names = sorted(Path(f[0]).name for f in files)
+            self.assertNotIn("~$Devre Raporu.docx", names)
+            self.assertEqual(len([n for n in names if n == "devre raporu.pdf"]), 0, "gizli ve sistem klasörleri atlanır")
+            found = pc.find_files("devre raporunu", files)
+            self.assertEqual(Path(found[0][0]).name, "Devre_Raporu_v2.pdf")
+            self.assertTrue(pc.clear_winner(found))
+            self.assertEqual(Path(pc.find_files("fizik odevi", files)[0][0]).name, "Fizik Ödevi 3.docx")
+            self.assertEqual(Path(pc.find_files("digital design hw 4", files)[0][0]).name, "DigitalDesignHW4.pdf")
+            self.assertEqual(pc.find_files("muhasebe tablosu", files), [])
+
+    def test_unclear_match_asks_which_one(self):
+        found = [("a/Devre_Raporu.pdf", 10, 0.98), ("b/Elektronik Devreler Raporu.pdf", 10, 0.93)]
+        self.assertFalse(pc.clear_winner(found))
+        self.assertFalse(pc.clear_winner([("x.pdf", 1, 0.7)]))
+        self.assertGreater(pc.name_score("derve rapor", "Devre_Raporu_v2.pdf"), 0.8, "yazım hatası tolere edilir")
+
     def test_unknown_job(self):
         self.assertIn("bilmiyorum", pc.do_job({"is": "format_c"}, {}))
         self.assertIn("O numarada dosya yok", pc.do_job({"is": "dosya", "arg": "99"}, {}) if os.name == "nt" else "O numarada dosya yok")

@@ -78,10 +78,12 @@ Nasıl çalışır: Program `%LOCALAPPDATA%\Jarvis` klasörüne kopyalanır, bil
 
 Güvenlik:
 - Program yalnızca listedeki işleri yapar, rastgele komut çalıştırmaz. Kamera ve konum yalnızca senin komutunla ya da kayıp modunda kullanılır.
-- Dosya olarak yalnızca İndirilenler ve Masaüstündeki son dosyaları gönderebilir.
+- Dosya olarak yalnızca Masaüstü, Belgeler, İndirilenler, OneDrive ve Resimler klasörlerindeki dosyaları gönderebilir (gizli ve sistem klasörlerine bakmaz).
 - Kapatma ve yeniden başlatma 1 dakika sonra olur, `/pc iptal` ile durdurulur. Normal cümleyle istenince önce onay ister.
 - `/pc bağla` ile gelen dosyadaki kod tek kullanımlıktır ve 1 saat geçerlidir. Bağlantı anahtarı yalnızca bilgisayardaki `config.json` dosyasında durur; Jarvis yalnızca anahtarın özetini saklar.
 - Bağlantıyı kaldırmak için `/pc ayır`. Programı bilgisayardan silmek için `jarvis_pc.py` dosyasını yeniden açıp `kaldir` yaz.
+
+**Dosya getir:** "bilgisayardan devre raporunu getir" ya da `/pc getir devre raporu` yaz. Program Masaüstü, Belgeler, İndirilenler, OneDrive ve Resimler klasörlerinde adı söylediğine en çok benzeyen dosyayı bulur (yazım hatası ve eksik ek sorun değil) ve panele gönderir. Dosya panelin **Dosyalar** bölümünde 1 saat indirilebilir; bildirimler açıksa telefona da haber gelir. Birkaç dosya benziyorsa liste gelir, `/pc getir 2` ile seçersin. Aynı anda en fazla 3 dosya durur, en fazla 45 MB. PDF ve resimler tarayıcıda açılır, diğerleri indirilir.
 
 **Kayıp/çalıntı modu:** Bilgisayar kaybolur ya da çalınırsa Telegram'a `/pc kayıp` yaz (ya da "laptopum çalındı"). Bilgisayar bağlıysa hemen, kapalıysa açılıp internete bağlandığı anda Jarvis sırayla ekran görüntüsü ve kamera fotoğrafı gönderir, konumu yazar ve bilgisayarı kilitler. Bilgisayar açık kaldıkça bunu 15 dakikada bir tekrarlar; gece 00:00-07:00 arası mesajlar sessiz gelir. Bulununca `/pc bulundu`. Yalnızca nerede olduğunu görmek için `/pc konum`, kameradan tek fotoğraf için `/pc kamera`.
 - Konum iki yerden gelir: Windows'un konumu (Wi-Fi ağlarına göre, genelde birkaç yüz metre içinde) ve internet bağlantısının IP adresine göre şehir. Ayrıca bağlı olduğu Wi-Fi ağının adı yazılır.
@@ -147,7 +149,8 @@ Telegram'da Jarvis botuna yazılır:
 | `/kargo 123456789012 kulaklık` | Kargoyu kaydeder, takip bağlantısını verir, her sabah hatırlatır; `/kargo` hepsi, `/kargo geldi 1` |
 | `/eczane` | Kayseri'de bu gece nöbetçi eczaneler; `/eczane talas`, `/eczane hepsi` |
 | `/bul` | Telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika bildirimle çalar; `/bul dur` |
-| `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc kamera`, `/pc konum`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; çalınırsa `/pc kayıp`, bulununca `/pc bulundu`; ilk kez `/pc bağla` |
+| `/kisilik` | Jarvis'in "efendim" diyen, ara sıra espri yapan konuşma tarzı (varsayılan açık); `/kisilik kapat` ile düz cevaplar |
+| `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc kamera`, `/pc konum`, `/pc getir devre raporu`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; çalınırsa `/pc kayıp`, bulununca `/pc bulundu`; ilk kez `/pc bağla` |
 | `/yardim` | Komut listesi |
 
 Hatırlatmalar 2 dakikada bir kontrol edilir, yani en fazla 2 dakika gecikebilir. Bot sadece kendi sohbetine cevap verir.

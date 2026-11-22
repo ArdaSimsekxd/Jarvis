@@ -25,7 +25,7 @@ from pathlib import Path
 
 # Telegram'dan gelen dosyada Jarvis bir sonraki satırı doldurur (tek kullanımlık eşleştirme kodu).
 PAIRING = ""
-VERSION = 3
+VERSION = 4
 # Cloudflare, Python'un varsayılan tanıtımıyla ("Python-urllib") gelen istekleri engelliyor (HTTP 403, hata 1010).
 USER_AGENT = f"JarvisPC/{VERSION} (Windows)"
 
@@ -58,6 +58,9 @@ SITES = {
 VK = {"ses_ac": 0xAF, "ses_kis": 0xAE, "oynat": 0xB3, "sonraki": 0xB0, "onceki": 0xB1}
 
 last_files = []   # "dosyalar" listesi: "dosya 3" bu listeden seçer
+last_found = []   # "getir" araması: "getir 2" bu listeden seçer
+SEARCH_SKIP = {"node_modules", "__pycache__", "appdata", "$recycle.bin", "venv", ".venv", "site-packages", "windows",
+               "program files", "program files (x86)"}
 
 
 # ---------- yardımcılar (her sistemde çalışır, test edilir) ----------
@@ -144,6 +147,85 @@ def format_files(files):
         lines.append(f"{i}. {Path(path).name} ({human_size(size)})")
     lines.append("Göndermem için: /pc dosya 1")
     return "\n".join(lines)
+
+
+def name_words(name):
+    """'Devre_Raporu-v2.PDF' -> ['devre', 'raporu', 'v2'] (uzantı atılır)"""
+    stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", str(name or ""))
+    stem = re.sub(r"([a-zçğıöşü])([A-ZÇĞİÖŞÜ])", r"\1 \2", stem)   # DevreRaporu -> Devre Raporu
+    return [w for w in re.split(r"[^a-z0-9]+", plain(stem)) if w]
+
+
+def name_score(query, name):
+    """Söylenen ad ile dosya adının benzerliği (0-1). Yazım hatası ve eksik ek tolere edilir."""
+    from difflib import SequenceMatcher
+    q = [w for w in name_words(query) if w not in ("dosya", "dosyasi", "dosyasini", "pdf", "belge", "belgesi")] or name_words(query)
+    words = name_words(name)
+    if not q or not words:
+        return 0.0
+    def word_score(a):
+        best = 0.0
+        for b in words:
+            if a == b:
+                return 1.0
+            if len(a) >= 3 and (b.startswith(a) or a.startswith(b) and len(b) >= 3):
+                best = max(best, 0.9)
+            best = max(best, SequenceMatcher(None, a, b).ratio())
+        return best
+    avg = sum(word_score(a) for a in q) / len(q)
+    whole = SequenceMatcher(None, " ".join(q), " ".join(words)).ratio()
+    extra = max(0, len(words) - len(q)) * 0.02   # fazladan kelimeler biraz düşürür
+    return round(max(avg, whole) - min(extra, 0.1), 3)
+
+
+def walk_files(roots, max_files=40000, max_seconds=8):
+    """Klasörlerdeki dosyalar (gizli ve sistem klasörleri atlanır): (yol, boyut, değişme zamanı)"""
+    start, seen, out = time.time(), set(), []
+    stack = [(Path(r), 0) for r in roots]
+    while stack and len(out) < max_files and time.time() - start < max_seconds:
+        folder, depth = stack.pop()
+        try:
+            key = os.path.realpath(folder).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        for e in entries:
+            if e.name.startswith((".", "~$", "$")):
+                continue
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if depth < 8 and e.name.lower() not in SEARCH_SKIP:
+                        stack.append((Path(e.path), depth + 1))
+                elif e.is_file() and not e.name.lower().endswith((".lnk", ".ini", ".tmp", ".crdownload", ".part")):
+                    st = e.stat()
+                    out.append((e.path, st.st_size, st.st_mtime))
+            except OSError:
+                continue
+    return out
+
+
+def find_files(query, files, limit=5):
+    """En benzer dosyalar, en iyisi önce. Benzerlik eşitse yeni olan önce."""
+    scored = [(name_score(query, Path(path).name), mtime, path, size) for path, size, mtime in files]
+    scored = [x for x in scored if x[0] >= 0.55]
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    return [(path, size, score) for score, _, path, size in scored[:limit]]
+
+
+def clear_winner(found):
+    """Tek bir dosya açıkça öne çıkıyor mu?"""
+    if not found or found[0][2] < 0.8:
+        return False
+    return len(found) == 1 or found[1][2] <= found[0][2] - 0.08
+
+
+def search_roots():
+    home = Path.home()
+    roots = [home / "Desktop", home / "Documents", home / "Downloads", home / "OneDrive", home / "Pictures"]
+    return [r for r in roots if r.exists()]
 
 
 def load_config():
@@ -375,6 +457,42 @@ def open_thing(what, cfg):
     return f"🚀 Açıyorum: {what}"
 
 
+def send_to_panel(cfg, path):
+    try:
+        upload(cfg, path, "panel", Path(path).name)
+    except Exception as err:   # noqa: BLE001 - kullanıcıya kısa haber yeter
+        log(f"dosya panele gönderilemedi: {err}")
+
+
+def fetch_file(cfg, arg):
+    """'getir devre raporu' adına en yakın dosyayı panele gönderir; 'getir 2' son aramadan seçer."""
+    global last_found
+    arg = arg.strip()
+    if arg.isdigit():
+        n = int(arg)
+        if not 1 <= n <= len(last_found):
+            return "O numarada dosya yok. Önce adını söyle: /pc getir devre raporu"
+        path, size, _ = last_found[n - 1]
+    else:
+        if len(plain(arg)) < 2:
+            return "Hangi dosyayı getireyim? Örnek: /pc getir devre raporu"
+        found = find_files(arg, walk_files(search_roots()))
+        last_found = found
+        if not found:
+            return f"\"{arg}\" adına benzeyen bir dosya bulamadım (Masaüstü, Belgeler, İndirilenler, OneDrive ve Resimler'e baktım)."
+        if not clear_winner(found):
+            lines = ["Birkaç dosya buldum, hangisi?"]
+            for i, (p, size, _) in enumerate(found, 1):
+                lines.append(f"{i}. {Path(p).name} ({human_size(size)}) · {Path(p).parent.name}")
+            lines.append("Seçmek için: /pc getir 1")
+            return "\n".join(lines)
+        path, size, _ = found[0]
+    if size > MAX_FILE:
+        return f"{Path(path).name} çok büyük ({human_size(size)}); en fazla 45 MB gönderebilirim."
+    threading.Thread(target=send_to_panel, args=(cfg, path), daemon=True).start()
+    return f"📄 {Path(path).name} ({human_size(size)}) buldum, panele gönderiyorum."
+
+
 def send_file(cfg, path, size):
     try:
         upload(cfg, path, "dosya", "📎 " + Path(path).name)
@@ -432,6 +550,8 @@ def do_job(job, cfg):
         home = Path.home()
         last_files = recent_files([home / "Downloads", home / "Desktop", home / "OneDrive" / "Desktop"])
         return format_files(last_files)
+    if what == "getir":
+        return fetch_file(cfg, arg)
     if what == "dosya":
         n = int(arg) if arg.isdigit() else 0
         if not last_files:
