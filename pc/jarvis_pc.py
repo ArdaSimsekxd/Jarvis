@@ -4,8 +4,9 @@
 # Program kendini %LOCALAPPDATA%\Jarvis klasörüne kopyalar, bilgisayar her açıldığında arka planda çalışır
 # ve Jarvis'e bağlanıp komut bekler. Bağlantıyı program kendisi açar; modemde ayar gerekmez.
 #
-# Güvenlik: yalnızca aşağıdaki işleri yapar (kilitle, uyku, kapat, ekran görüntüsü, ses, müzik, uygulama/site açma,
-# İndirilenler ve Masaüstündeki dosyaları gönderme). Rastgele komut çalıştırmaz. Bağlantı anahtarı yalnızca bu
+# Güvenlik: yalnızca aşağıdaki işleri yapar (kilitle, uyku, kapat, ekran görüntüsü, kamera fotoğrafı, konum, ses, müzik,
+# uygulama/site açma, İndirilenler ve Masaüstündeki dosyaları gönderme). Kamera ve konum, bilgisayar kaybolur ya da
+# çalınırsa sahibine (Telegram'daki "/pc kayıp") bilgisayarın yerini bulmak içindir. Rastgele komut çalıştırmaz. Bağlantı anahtarı yalnızca bu
 # bilgisayarda (config.json) ve Jarvis'te (özeti) durur. Kaldırmak için bu dosyayı yeniden açıp "kaldir" yaz.
 
 import json
@@ -24,7 +25,7 @@ from pathlib import Path
 
 # Telegram'dan gelen dosyada Jarvis bir sonraki satırı doldurur (tek kullanımlık eşleştirme kodu).
 PAIRING = ""
-VERSION = 2
+VERSION = 3
 # Cloudflare, Python'un varsayılan tanıtımıyla ("Python-urllib") gelen istekleri engelliyor (HTTP 403, hata 1010).
 USER_AGENT = f"JarvisPC/{VERSION} (Windows)"
 
@@ -252,6 +253,94 @@ def screenshot(cfg):
             pass
 
 
+def webcam(cfg, caption):
+    """Kameradan tek bir fotoğraf çeker ve Telegram'a gönderir (OpenCV gerekir; kurulum dosyası kurar)."""
+    try:
+        import cv2
+    except ImportError:
+        return ("Kamera için gereken parça (opencv) bu bilgisayarda kurulu değil. Telegram'da /pc bağla yazıp "
+                "gelen dosyayı yeniden açarsan kurulur.")
+    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    try:
+        if not cam.isOpened():
+            return "Kameraya ulaşamadım (kapalı ya da başka bir uygulama kullanıyor olabilir)."
+        frame = None
+        for _ in range(15):   # ilk kareler karanlık gelir: ışık ayarı otursun
+            ok, img = cam.read()
+            if ok:
+                frame = img
+            time.sleep(0.1)
+    finally:
+        cam.release()
+    if frame is None:
+        return "Kameradan görüntü alamadım."
+    path = Path(tempfile.gettempdir()) / f"jarvis_kamera_{int(time.time())}.jpg"
+    try:
+        cv2.imwrite(str(path), frame)
+        upload(cfg, path, "foto", caption)
+        return ""
+    finally:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+LOCATION_PS = r"""
+Add-Type -AssemblyName System.Device
+$w = New-Object System.Device.Location.GeoCoordinateWatcher('High')
+$w.Start()
+$t = 0
+while (($w.Status -ne 'Ready') -and ($w.Permission -ne 'Denied') -and ($t -lt 120)) { Start-Sleep -Milliseconds 100; $t++ }
+$c = $w.Position.Location
+if ($w.Permission -eq 'Denied') { 'izin-yok' }
+elseif ($c.IsUnknown) { 'yok' }
+else { $i = [Globalization.CultureInfo]::InvariantCulture; '{0};{1};{2}' -f $c.Latitude.ToString($i), $c.Longitude.ToString($i), [math]::Round($c.HorizontalAccuracy) }
+$w.Stop()
+"""
+
+
+def parse_location(text):
+    """'38.72;35.48;40' -> (38.72, 35.48, 40); diğer her şey None."""
+    m = re.match(r"^\s*(-?\d+(?:\.\d+)?);(-?\d+(?:\.\d+)?);(\d+(?:\.\d+)?)\s*$", text or "")
+    if not m:
+        return None
+    lat, lon, acc = float(m.group(1)), float(m.group(2)), float(m.group(3))
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon, int(acc)
+
+
+def parse_ssid(netsh_output):
+    """'netsh wlan show interfaces' çıktısından bağlı Wi-Fi ağının adı (BSSID satırı değil)."""
+    for line in (netsh_output or "").splitlines():
+        m = re.match(r"^\s*SSID\s*:\s*(.+?)\s*$", line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def location_text():
+    lines = []
+    try:
+        loc = parse_location(powershell(LOCATION_PS, timeout=25).stdout.strip())
+    except (subprocess.SubprocessError, OSError):
+        loc = None
+    if loc:
+        lat, lon, acc = loc
+        lines.append(f"📍 Konum (Windows): https://maps.google.com/?q={lat:.5f},{lon:.5f} (yaklaşık ±{acc} m)")
+    else:
+        lines.append("📍 Windows konumu alınamadı (Ayarlar > Gizlilik > Konum kapalı olabilir).")
+    try:
+        out = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=10,
+                             creationflags=CREATE_NO_WINDOW, errors="replace").stdout
+        ssid = parse_ssid(out)
+    except (subprocess.SubprocessError, OSError):
+        ssid = None
+    lines.append(f"📶 Wi-Fi: {ssid}" if ssid else "📶 Wi-Fi'ye bağlı değil (kablo ya da telefon interneti olabilir).")
+    return "\n".join(lines)
+
+
 def start_menu_shortcut(name):
     """Başlat menüsündeki kısayollarda adı geçen uygulamayı bulur (yalnızca kurulu uygulamalar)."""
     want = plain(name)
@@ -319,6 +408,10 @@ def do_job(job, cfg):
         return "✋ Kapatmayı iptal ettim." if r.returncode == 0 else "Bekleyen bir kapatma yoktu."
     if what == "ekran":
         return screenshot(cfg)
+    if what == "kamera":
+        return webcam(cfg, arg or ("📷 Kamera " + time.strftime("%H:%M")))
+    if what == "konum":
+        return location_text()
     if what == "ses":
         presses = volume_presses(arg)
         if not presses:
@@ -498,6 +591,19 @@ def ensure_websockets():
     return True
 
 
+def ensure_camera():
+    """Kamera için OpenCV (isteğe bağlı): kurulamazsa Jarvis yine çalışır, yalnızca kamera fotoğrafı olmaz."""
+    try:
+        import cv2  # noqa: F401
+        return
+    except ImportError:
+        pass
+    print("Kamera için bir parça kuruluyor (opencv, ~40 MB), biraz sürebilir...")
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--quiet", "opencv-python-headless"])
+    if r.returncode != 0:
+        print("Kamera parçası kurulamadı; Jarvis yine çalışır, yalnızca kamera fotoğrafı çekemez.")
+
+
 def setup():
     print("=== Jarvis bilgisayar kurulumu ===\n")
     if os.name != "nt":
@@ -519,6 +625,7 @@ def setup():
         return
     if not ensure_websockets():
         return
+    ensure_camera()
 
     print("Jarvis'e bağlanılıyor...")
     result = post_json(server + "/pc/pair", {"code": code})

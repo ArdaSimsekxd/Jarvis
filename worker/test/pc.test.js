@@ -193,3 +193,129 @@ test("dışarıdan yalnızca bilgisayar programının yolları açık", async ()
   assert.equal(await (await worker.fetch(post("/pc/pair", { code: "x" }), env, {})).text(), "hub");
   assert.deepEqual(seen, ["/pc/pair"]);
 });
+
+test("kayıp modu: komutlar", () => {
+  assert.deepEqual(parsePc("kamera"), { job: { is: "kamera", arg: "" } });
+  assert.deepEqual(parsePc("nerede"), { job: { is: "konum", arg: "" } });
+  assert.deepEqual(parsePc("kayıp"), { local: "lost" });
+  assert.deepEqual(parsePc("çalındı"), { local: "lost" });
+  assert.deepEqual(parsePc("kayıp kapat"), { local: "found" });
+  assert.deepEqual(parsePc("bulundu"), { local: "found" });
+  assert.match(PC_HELP, /\/pc kayıp/);
+});
+
+function alarmState() {
+  const state = fakeState();
+  state.alarm = null;
+  state.storage.setAlarm = async (t) => { state.alarm = t; };
+  state.storage.deleteAlarm = async () => { state.alarm = null; };
+  return state;
+}
+
+test("kayıp modu: bilgisayar bağlanınca fotoğraf, konum, kilit; 15 dakikada bir", async () => {
+  const state = alarmState();
+  const hub = new PcHub(state, { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "42" });
+  assert.deepEqual(await internal(hub, "lost", { on: true }), { paired: false });
+  const { code } = await internal(hub, "pair");
+  const { token } = await (await hub.fetch(post("/pc/pair", { code }))).json();
+  assert.ok(token);
+  state.data.delete("announce");
+  const sent = [];
+  hub.tgFetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response("{}"); };
+
+  // Bilgisayar kapalıyken açılır: bağlanınca çalışır
+  assert.deepEqual(await internal(hub, "lost", { on: true }), { paired: true, online: false });
+  assert.equal(state.alarm, null);
+  const ws = fakeSocket(hub, (job) => ({
+    ekran: "", kamera: "",
+    konum: "📍 Konum (Windows): https://maps.google.com/?q=38.73,35.48 (yaklaşık ±40 m)\n📶 Wi-Fi: <Kafe>",
+    kilitle: "🔒 Bilgisayarı kilitledim.",
+  }[job.is] ?? null));
+  state.sockets.push(ws);
+  const where = { ip: "203.0.113.7", city: "Kayseri", region: "Kayseri", country: "TR", lat: 38.73, lon: 35.48, org: "Türk Telekom" };
+  await hub.connected(new Request("https://pc/pc/connect", { headers: { "X-Jarvis-Yer": encodeURIComponent(JSON.stringify(where)) } }));
+  assert.equal(state.data.get("where").city, "Kayseri");
+  const first = state.data.get("lost").next;
+  assert.ok(first > Date.now() && state.alarm === first, "10 saniye sonrasına kuruldu");
+
+  await hub.alarm();
+  assert.equal(ws.jobs.length, 0, "vakti gelmeden çalışmaz");
+  state.data.get("lost").next = 0;
+  await hub.alarm();
+  assert.deepEqual(ws.jobs.map((j) => j.is), ["ekran", "kamera", "konum", "kilitle"], "önce fotoğraflar, en son kilit");
+  assert.match(ws.jobs[1].arg, /Kayıp modu/);
+  assert.equal(sent.length, 1);
+  const text = sent[0].text;
+  assert.match(text, /^🚨 <b>Kayıp modu<\/b> · 1\. rapor/);
+  assert.match(text, /maps\.google\.com\/\?q=38\.73,35\.48/);
+  assert.match(text, /Wi-Fi: &lt;Kafe&gt;/, "bilgisayardan gelen yazı kaçışlanır");
+  assert.match(text, /İnternet bağlantısına göre, şehir düzeyinde: Kayseri, TR/);
+  assert.match(text, /Türk Telekom · IP 203\.0\.113\.7/);
+  assert.match(text, /\/pc bulundu/);
+  const lost = state.data.get("lost");
+  assert.equal(lost.n, 1);
+  assert.ok(lost.next - Date.now() > 14 * 60 * 1000, "15 dakika sonra yeniden");
+  assert.equal(state.alarm, lost.next);
+
+  // Bilgisayar kapanırsa bekler
+  state.sockets.length = 0;
+  state.data.get("lost").next = 0;
+  await hub.alarm();
+  assert.equal(sent.length, 1);
+  assert.equal(state.data.get("lost").next, null);
+  assert.equal(state.alarm, null);
+
+  assert.deepEqual(await internal(hub, "lost", { on: false }), { paired: true, stopped: true });
+  assert.equal(state.data.has("lost"), false);
+  assert.deepEqual(await internal(hub, "lost", { on: false }), { paired: true, stopped: false });
+});
+
+test("kayıp modu: eski program kamera ve konumu bilmiyorsa söylenir", async () => {
+  const state = alarmState();
+  const hub = new PcHub(state, {});
+  state.data.set("token", "x");
+  const sent = [];
+  hub.tgFetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response("{}"); };
+  const old = "Bu işi bilmiyorum. Programın yeni sürümü gerekebilir: Telegram'da /pc bağla yazıp gelen dosyayı yeniden aç.";
+  state.sockets.push(fakeSocket(hub, (job) => (job.is === "ekran" ? "" : job.is === "kilitle" ? "🔒" : old)));
+  hub.lostWait = 50;
+  assert.deepEqual(await internal(hub, "lost", { on: true }), { paired: true, online: true });
+  state.data.get("lost").next = 0;
+  await hub.alarm();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].text.split("yeni sürümü").length, 2, "aynı uyarı bir kez");
+  assert.match(sent[0].text, /Bilgisayarı kilitledim/);
+});
+
+test("kayıp modu: /pc komutları ve bağlantı yeri", async () => {
+  const replies = { lost: [{ paired: true, online: false }, { paired: true, online: true }, { paired: true, stopped: true }] };
+  const ctx = {
+    pc: {
+      call: async (op) => {
+        if (op === "lost") return replies.lost.shift();
+        if (op === "where") return { where: { ip: "203.0.113.7", city: "Talas", region: "Kayseri", country: "TR", lat: null, lon: null, org: null, at: NOW } };
+        return { paired: true, online: true, reply: "📍 Konum (Windows): yok" };
+      },
+    },
+  };
+  assert.match(await cmdPc("kayıp", ctx), /bağlı değil\. Açılıp internete bağlandığı anda/);
+  const on = await cmdPc("çalındı", ctx);
+  assert.match(on, /Şimdi ekran görüntüsü/);
+  assert.match(on, /polise/);
+  assert.match(await cmdPc("bulundu", ctx), /Kayıp modunu kapattım/);
+  const where = await cmdPc("konum", ctx);
+  assert.match(where, /^📍 Konum \(Windows\): yok\n🌐 İnternet bağlantısına göre, şehir düzeyinde: Talas, Kayseri, TR\nIP 203\.0\.113\.7 \(01:30 bağlantısı\)$/);
+  assert.doesNotMatch(where, /haritada/);
+  assert.deepEqual(toSteps([{ ad: "bilgisayar", metin: "kayip" }], NOW, "laptopum çalındı"),
+    [{ type: "private", label: "bilgisayar", command: "pc", args: "kayip" }]);
+});
+
+test("bağlantıya yaklaşık yer eklenir, programın gönderdiği sahte başlık silinir", async () => {
+  const seen = [];
+  const env = { PC: { idFromName: (n) => n, get: () => ({ fetch: async (req) => { seen.push(req.headers.get("X-Jarvis-Yer")); return new Response("hub"); } }) } };
+  const fake = encodeURIComponent(JSON.stringify({ ip: "1.1.1.1" }));
+  await worker.fetch(new Request("https://j.example/pc/connect", { headers: { "X-Jarvis-Yer": fake, "CF-Connecting-IP": "203.0.113.9" } }), env, {});
+  await worker.fetch(post("/pc/pair", { code: "x" }, { "X-Jarvis-Yer": fake }), env, {});
+  assert.equal(JSON.parse(decodeURIComponent(seen[0])).ip, "203.0.113.9");
+  assert.equal(seen[1], null);
+});

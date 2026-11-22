@@ -63,6 +63,17 @@ class HelpersTest(unittest.TestCase):
             self.assertIn("/pc dosya 1", text)
         self.assertIn("bulamadım", pc.format_files([]))
 
+    def test_location_and_wifi(self):
+        self.assertEqual(pc.parse_location("38.72;35.48;40\r\n"), (38.72, 35.48, 40))
+        self.assertEqual(pc.parse_location("-33.9;151.2;1200.6"), (-33.9, 151.2, 1200))
+        self.assertIsNone(pc.parse_location("yok"))
+        self.assertIsNone(pc.parse_location("izin-yok"))
+        self.assertIsNone(pc.parse_location("95;35;10"))
+        netsh = ("    Name                   : Wi-Fi\n    SSID                   : Ev Agi 5G\n"
+                 "    BSSID                  : aa:bb:cc:dd:ee:ff\n")
+        self.assertEqual(pc.parse_ssid(netsh), "Ev Agi 5G")
+        self.assertIsNone(pc.parse_ssid("There is no wireless interface on the system."))
+
     def test_unknown_job(self):
         self.assertIn("bilmiyorum", pc.do_job({"is": "format_c"}, {}))
         self.assertIn("O numarada dosya yok", pc.do_job({"is": "dosya", "arg": "99"}, {}) if os.name == "nt" else "O numarada dosya yok")

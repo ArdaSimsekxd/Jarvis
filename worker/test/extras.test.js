@@ -246,6 +246,10 @@ test("telefonumu bul: aralıklarla bildirim, dokununca durur", async () => {
   assert.deepEqual(await call(hub, "find"), { subs: 1, sent: 1 });
   assert.ok(state.alarm > Date.now(), "sonraki bildirim kuruldu");
   await hub.alarm();
+  assert.equal(pushes, 1, "vakti gelmeden çalmaz");
+  hub.findEvery = 0;
+  state.data.get("find").next = 0;
+  await hub.alarm();
   await hub.alarm();
   assert.equal(pushes, 3);
   assert.equal(state.data.get("find").n, 3);

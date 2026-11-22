@@ -8,7 +8,7 @@ import { MODEL, SPEECH_MODEL, VISION_FALLBACK, VISION_MODEL, converse, parseSeen
 import { MAX_NOTES, addNote, cmdHafiza, cmdNot, makeNote, noteData } from "./memory.js";
 import { cmdTarihler, scanDates } from "./dates.js";
 import { cmdAra, cmdOzetle } from "./web.js";
-import { PC_FILE, cmdPc } from "./pc.js";
+import { PC_FILE, WHERE_HEADER, cmdPc, placeOf } from "./pc.js";
 import { cmdBul, cmdPanel, handlePanel, plainText } from "./panel.js";
 import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
@@ -581,7 +581,12 @@ export default {
     const url = new URL(request.url);
     // Bilgisayardaki program: eşleştirme, bağlantı ve dosya gönderme (kimlik kontrolünü PcHub yapar)
     if (["/pc/pair", "/pc/connect", "/pc/upload"].includes(url.pathname)) {
-      return env.PC ? env.PC.get(env.PC.idFromName("pc")).fetch(request) : new Response("yok", { status: 404 });
+      if (!env.PC) return new Response("yok", { status: 404 });
+      // Bağlantıya Cloudflare'in gördüğü yaklaşık yer eklenir (kayıp modu için). Programın gönderdiği aynı adlı başlık silinir.
+      const headers = new Headers(request.headers);
+      headers.delete(WHERE_HEADER);
+      if (url.pathname === "/pc/connect") headers.set(WHERE_HEADER, encodeURIComponent(JSON.stringify(placeOf(request))));
+      return env.PC.get(env.PC.idFromName("pc")).fetch(new Request(request, { headers }));
     }
     // Jarvis paneli: sayfa herkese açık ama boş; veriler yalnızca gizli anahtarla okunur
     // Telefondaki uygulamanın canlı bağlantısı (anahtar kontrolünü PcHub yapar)
