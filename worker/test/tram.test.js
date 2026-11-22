@@ -143,5 +143,36 @@ test("tramvay: varış isteği çerezle gider; çalışmayan biçimde sıradaki 
   assert.equal(await ctx.cache.get("tramvay:bicim"), 1);
   await fetchTramArrivals(ctx, ILDEM5);
   assert.equal(ctx.calls.filter((c) => c.url === ARR + ILDEM5).length, 1, "çalışan biçim doğrudan kullanılır");
-  assert.equal(ARRIVAL_VARIANTS.length, 4);
+  assert.equal(ARRIVAL_VARIANTS.length, 3);
+  assert.ok(ARRIVAL_VARIANTS.every((v) => v.init.method === "POST"), "GET sayfa döndürüyor, denenmez");
+});
+
+test("tramvay: her biçime 500 veren durak 'veri yok' sayılır ve 5 dakika yeniden sorulmaz", async () => {
+  const ctx = fakeCtx();
+  const plain = ctx.webFetch;
+  ctx.webFetch = async (url, init = {}) => (url === ARR + CUMH
+    ? (ctx.calls.push({ url, init }), { ok: false, status: 500, json: async () => { throw new Error("html"); }, text: async () => "<html>" })
+    : plain(url, init));
+  await assert.rejects(fetchTramArrivals(ctx, CUMH), (e) => e.noData === true);
+  assert.equal(ctx.calls.length, 3);
+  await assert.rejects(fetchTramArrivals(ctx, CUMH), (e) => e.noData === true);
+  assert.equal(ctx.calls.length, 3, "ikinci sorguda siteye gidilmez");
+  const out = await cmdTramvay("cumhuriyet", ctx);
+  assert.match(out, /varış bilgisi vermiyor/);
+  assert.doesNotMatch(out, /ulaşamadım/);
+});
+
+test("tramvay: Makas Bölgesi konum aramasında atlanır; test komutu birkaç durağı dener", async () => {
+  const index = { stops: {
+    [ILDEM5]: ["İldem5", 38.786984, 35.6257987, ["T1"]],
+    "aaaaaaaa-1111-2222-3333-444444444444": ["Makas Bölgesi", 38.7869, 35.6258, ["T1"]],
+  } };
+  assert.deepEqual(nearestTram(index, { lat: 38.7869, lon: 35.6258 }).map((s) => s.name), ["İldem5"]);
+  const ctx = fakeCtx();
+  const out = await cmdTramvay("test", ctx);
+  assert.match(out, /Varış · İldem5/);
+  assert.match(out, /Varış · DSI-Yeni Sanayi/);
+  const one = await cmdTramvay("test ildem1", ctx);
+  assert.match(one, /Varış · İldem1/);
+  assert.doesNotMatch(one, /Varış · İldem5/);
 });
