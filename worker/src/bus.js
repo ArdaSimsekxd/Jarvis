@@ -3,7 +3,7 @@
 // Site değişirse burası güncellenmeli. Siteden gelen yazılar yalnızca veridir.
 import { esc, plain, trParts } from "./logic.js";
 import { distanceKm } from "./quake.js";
-import { tramNear } from "./tram.js";
+import { tramAlone, tramNear } from "./tram.js";
 
 export const BUS_KEY = "otobus";
 export const BASE = "https://www.kayseriulasim.com";
@@ -285,10 +285,12 @@ async function arrivalsText(ctx, stops, learn = true) {
 const HOW_LOCATION = "Telegram'da 📎 → <b>Konum</b> → <b>Mevcut konumumu gönder</b>; panelde 🚌 düğmesi.";
 
 // Telegram'dan ya da panelden gelen konum: en yakın durağa yaklaşan otobüsler (ve yakındaysa tramvay). Konum saklanmaz.
-export async function busLocation(loc, ctx) {
+// only: "bus" yalnız otobüs, "tram" yalnız tramvay (panel düğmeleri); boşsa ikisi birlikte.
+export async function busLocation(loc, ctx, { only = null } = {}) {
   const here = { lat: Number(loc?.latitude), lon: Number(loc?.longitude) };
   if (!Number.isFinite(here.lat) || !Number.isFinite(here.lon)) return "Konumu okuyamadım.";
-  const tram = await tramNear(ctx, here).catch((err) => { console.error("tramvay durağı bulunamadı", err?.message); return null; });
+  if (only === "tram") return tramAlone(ctx, here);
+  const tram = only === "bus" ? null : await tramNear(ctx, here).catch((err) => { console.error("tramvay durağı bulunamadı", err?.message); return null; });
   let index = await loadIndex(ctx.kv);
   let near = nearestStops(index, here);
   if (!near.length) {

@@ -174,6 +174,16 @@ export async function tramNear(ctx, here) {
   return { km: near[0].km, text: await stopsText(ctx, near) };
 }
 
+// Yalnız tramvay (panelin 🚋 düğmesi): yakında durak yoksa en yakın tramvay durağının ne kadar uzakta olduğunu söyler.
+export async function tramAlone(ctx, here) {
+  const index = await tramIndex(ctx);
+  if (!Object.keys(index.stops).length) return "Tramvay duraklarını şu an Kayseri Ulaşım'dan alamadım. Birazdan yeniden dener misin?";
+  const near = nearestTram(index, here);
+  if (near.length) return stopsText(ctx, near);
+  const [closest] = nearestTram(index, here, Infinity);
+  return `🚋 Yakınında (800\u00a0m içinde) tramvay durağı yok. En yakın tramvay durağı <b>${esc(closest.name)}</b>, ${metres(closest.km)} uzakta.\nO durak için: <code>/tramvay ${esc(closest.name)}</code>`;
+}
+
 // Ada göre durak bulur: önce tam eşleşme, sonra başı ya da içi tutanlar. Aynı adlı peronlar birlikte döner.
 export function findTramStops(index, query) {
   const squash = (t) => plain(t).replace(/[^\p{L}\p{N}]/gu, "");
