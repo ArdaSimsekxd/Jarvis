@@ -4,7 +4,7 @@ import { busLocation } from "../src/bus.js";
 import { toSteps } from "../src/brain.js";
 import { trToMs } from "../src/logic.js";
 import {
-  TRAM_KEY, arrivalInit, errorHint, fetchTramArrivals, cmdTramvay, crawlTram, findTramStops, formatTram, loadTramIndex, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
+  TRAM_KEY, arrivalInit, errorHint, fetchTramArrivals, cmdTramvay, crawlTram, findTramStops, formatStop, formatTram, loadTramIndex, tramRoute, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
 } from "../src/tram.js";
 
 const NOW = trToMs(2026, 11, 22, 20, 55);
@@ -59,7 +59,7 @@ test("tramvay: harita ve varış cevapları okunur", () => {
   ]);
   assert.deepEqual(parseTramArrivals({ x: 1 }), []);
   const text = formatTram({ name: "İldem1", km: 0.12 }, parseTramArrivals(ARR_ILDEM1), NOW);
-  assert.equal(text, "🚋 <b>İldem1</b> tramvay durağı · 20:55 · 120 m uzakta\n<b>T1</b> İldem - Organize Sanayi · 2 dk\n<b>T3</b> İldem - Kumsmall · ~10 dk\n<i>~ tarifeye göre</i>");
+  assert.equal(text, "🚋 <b>İldem1</b> tramvay durağı · 20:55 · 120 m uzakta\n➡️ Organize Sanayi / Kumsmall yönü\n<b>T1</b> İldem → <b>Organize Sanayi</b> · 2 dk\n<b>T3</b> İldem → <b>Kumsmall</b> · ~10 dk\n<i>~ tarifeye göre</i>");
 });
 
 test("tramvay: komut, durak arama ve tek seferlik durak listesi", async () => {
@@ -70,7 +70,7 @@ test("tramvay: komut, durak arama ve tek seferlik durak listesi", async () => {
   const idx = await loadTramIndex(ctx.kv);
   assert.deepEqual(idx.lines, ["T1", "T3"]);
   assert.deepEqual(idx.stops[ILDEM5][3], ["T1", "T3"]);
-  assert.match(await cmdTramvay("ildem 1", ctx), /🚋 <b>İldem1<\/b> tramvay durağı · 20:55\n<b>T1<\/b> İldem - Organize Sanayi · 2 dk/);
+  assert.match(await cmdTramvay("ildem 1", ctx), /🚋 <b>İldem1<\/b> tramvay durağı · 20:55\n➡️ Organize Sanayi \/ Kumsmall yönü\n<b>T1<\/b> İldem → <b>Organize Sanayi<\/b> · 2 dk/);
   const post = ctx.calls.find((c) => c.url === ARR + ILDEM1);
   assert.equal(post.init.method, "POST");
   assert.match(await cmdTramvay("cumhuriyet", ctx), /Cumhuriyet Meydanı<\/b> tramvay durağı · 20:55\nŞu an bu durağa yaklaşan tramvay görünmüyor/);
@@ -93,7 +93,7 @@ test("tramvay: konumla en yakın durak, otobüsten önce", async () => {
   const ctx = fakeCtx();
   const near = { latitude: 38.7826, longitude: 35.6012 };   // İldem1'in ~40 m yanı
   const text = await busLocation(near, ctx);
-  assert.match(text, /^🚋 <b>İldem1<\/b> tramvay durağı · 20:55 · 40 m uzakta\n<b>T1<\/b>/);
+  assert.match(text, /^🚋 <b>İldem1<\/b> tramvay durağı · 20:55 · 40 m uzakta\n➡️ Organize Sanayi \/ Kumsmall yönü\n<b>T1<\/b>/);
   assert.doesNotMatch(text, /tanımıyorum/);
   assert.deepEqual(nearestTram(await loadTramIndex(ctx.kv), { lat: 38.7, lon: 35.2 }), []);
 });
@@ -174,4 +174,21 @@ test("tramvay: Makas Bölgesi konum aramasında atlanır; test komutu birkaç du
   assert.doesNotMatch(one, /Varış · İldem1/);
   assert.equal(errorHint("<html><head><title>Hata Sayfası</title><script>var error=1;</script></head><body><p>Bir hata oluştu. Object reference not set to an instance of an object.</p></body></html>"),
     "başlık: Hata Sayfası · ipucu: Bir hata oluştu");
+});
+
+test("tramvay: iki peronlu durakta her peron gittiği yönle başlıklandırılır", () => {
+  const a = (name, min, live = true) => ({ ...parseTramArrivals([{ name, dataType: live ? "LIVE" : "PLAN", timeToStop: min }])[0] });
+  const text = formatStop("Düvenönü", [
+    { km: 0.51, arrivals: [a("[T3] İldem - Kumsmall", 2), a("[T1] İldem - Organize Sanayi", 12)] },
+    { km: 0.57, arrivals: [a("[T3] Kumsmall - İldem", 8), a("[T1] Organize Sanayi - İldem", 16, false)] },
+  ], NOW);
+  assert.equal(text, [
+    "🚋 <b>Düvenönü</b> tramvay durağı · 20:55",
+    "➡️ <b>Kumsmall / Organize Sanayi yönü</b> · 510\u00a0m uzakta\n<b>T3</b> İldem → <b>Kumsmall</b> · 2 dk\n<b>T1</b> İldem → <b>Organize Sanayi</b> · 12 dk",
+    "⬅️ <b>İldem yönü</b> · 570\u00a0m uzakta\n<b>T3</b> Kumsmall → <b>İldem</b> · 8 dk\n<b>T1</b> Organize Sanayi → <b>İldem</b> · ~16 dk",
+    "<i>Gideceğin yön hangi başlıktaysa o perondan bin.</i>\n<i>~ tarifeye göre</i>",
+  ].join("\n\n"));
+  const half = formatStop("Düvenönü", [{ km: 0.5, arrivals: [] }, { km: 0.6, error: { noData: true } }], NOW);
+  assert.match(half, /➡️ Bir peron · 500\u00a0m uzakta: şu an yaklaşan tramvay yok\./);
+  assert.match(half, /⬅️ Bir peron · 600\u00a0m uzakta: Kayseri Ulaşım bu durak için/);
 });
