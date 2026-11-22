@@ -100,6 +100,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - bekleyen ve geciken ödevler (geri sayımla)
 - mail ve duyurulardan bulunan tarihler, hatırlatmalar ve fitness randevuları
 - **Aklımda:** saati olmayan yapılacaklar listesi; kartın içinden yazıp ekle, yapınca ✓'ye dokun
+- **Anı defteri:** her güne bir fotoğraf ve kısa not. 📷 ile bugünün fotoğrafını ekle, 📖 Defteri aç ile sayfaları parmağınla çevir (sayfa sesi 🔊 ile kapatılabilir). Fotoğraf telefonda ~1440 px'e küçültülür, KV'de günde bir kayıt olarak durur ve yalnızca panel anahtarıyla görülür
 - bütün bekleyen hatırlatmalar ayrı bir kartta (SİL'e iki kez dokununca silinir, "+ EKLE" sohbet kutusuna götürür)
 - bu ayın harcaması ve bütçe göstergesi
 - son mailler ve yemekhane menüsü
@@ -152,6 +153,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/deprem` | Son depremler ve uyarı ayarları; `/deprem ekle İzmir`, `/deprem esik 4`, `/deprem kapat` |
 | `/kargo 123456789012 kulaklık` | Kargoyu kaydeder, takip bağlantısını verir, her sabah hatırlatır; `/kargo` hepsi, `/kargo geldi 1` |
 | `/eczane` | Kayseri'de bu gece nöbetçi eczaneler; `/eczane talas`, `/eczane hepsi` |
+| Fotoğraf + altına `anı ...` | Fotoğraf hafızaya değil anı defterine gider (o günün sayfası; aynı gün yeniden gönderirsen değişir). `anı dün ...` dünün sayfası olur. `/ani` son sayfalar ve seri, `/ani sil bugün` siler. Noktasız "ani" (ani yağmur) sayılmaz |
 | `/aklimda süt al` | Saati olmayan yapılacaklar listesi; `/aklimda` liste, `/aklimda bitti 1` ya da `/aklimda bitti süt`. "Aklımda kalsın, kitabı iade edeceğim" gibi cümleler de olur; saat söylemeden "hatırlat" dersen de buraya eklenir |
 | `/otobus 7548` | Durağa yaklaşan otobüsler ve kaç dakika; `/otobus ekle 7548 okul`, `/otobus okul`, `/otobus ara erkilet`; konum gönderince en yakın durak |
 | `/bul` | Telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika bildirimle çalar; `/bul dur` |
@@ -288,6 +290,7 @@ worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocke
 worker/src/quake.js           Deprem uyarısı (AFAD, yedekte EMSC ve USGS)
 worker/src/pharmacy.js        Nöbetçi eczaneler (haber sitelerinin listeleri)
 worker/src/aklimda.js         Aklımda: saati olmayan yapılacaklar listesi
+worker/src/ani.js             Anı defteri: günde bir fotoğraf (KV), seri, /ani
 worker/src/bus.js             Otobüs geliş süreleri ve en yakın durak (kayseriulasim.com)
 worker/src/cargo.js           Kargo takibi (bağlantı + hatırlatma; anahtar varsa 17TRACK)
 worker/src/panel.js           Jarvis paneli ve iPhone uygulaması: veriler, giriş, sohbet; sayfası panel_page.js

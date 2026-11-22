@@ -31,7 +31,7 @@ const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
   "harcama_ekle", "harcamalar", "harcama_sil", "butce",
-  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus", "aklimda_ekle", "aklimda_liste", "aklimda_bitti",
+  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus", "aklimda_ekle", "aklimda_liste", "aklimda_bitti", "ani_defteri",
 ];
 
 // Jarvis kişiliği: yapay zekânın yazdığı cevaplar Iron Man'deki asistan gibi kibar ve hafif esprili olur.
@@ -132,6 +132,7 @@ Yapabildiğin işlemler:
 - {"ad":"fitness_istek_sil","tarih":"YYYY-AA-GG","haftalik":"evet"} bir fitness isteğini tamamen kaldırır (ör. "artık salıları gitmeyeceğim")
 - {"ad":"aklimda_ekle","metin":"yapılacak iş"} saati olmayan, unutulmaması gereken bir işi "Aklımda" listesine ekler ("aklımda kalsın, süt alacağım", "yapılacaklara ekle: hocaya mail at", "kitabı iade etmeyi unutmayayım", "bir ara saç kestireceğim"). metin kısa ve emir kipinde olsun ("Süt al", "Kitabı kütüphaneye iade et"). Saat ya da gün verildiyse bu değil, hatirlatma_ekle'dir.
 - {"ad":"aklimda_liste"} "Aklımda" listesini gösterir ("aklımda ne vardı?", "yapılacaklarım ne?", "listemde ne var?").
+- {"ad":"ani_defteri"} Anı defterinin son sayfalarını ve serisini gösterir ("anı defterim", "kaç gündür fotoğraf ekliyorum?"). Fotoğraf eklemek için kullanıcı fotoğrafın altına "anı" yazmalı.
 - {"ad":"aklimda_bitti","metin":"maddenin numarası ya da içindeki bir sözcük"} yapılan işi listeden çıkarır ("süt aldım", "2 bitti", "kitabı iade ettim" -> metin "kitab"). Sözcüğü maddede geçtiği biçimde, eksiz yaz.
 - {"ad":"hafiza_kaydet","metin":"kaydedilecek bilgi"} kullanıcının sonra hatırlamak istediği bir bilgiyi, notu ya da bağlantıyı hafızaya kaydeder ("kaydet", "not al", "bunu bil" gibi; yapılacak bir iş değil, bilgi: "dolabım 45 numara", "Wi-Fi şifresi ..."). metin'e bilgiyi kullanıcının kendi kelimeleriyle, kısaltmadan ve eksiksiz yaz; "bunu kaydet" gibi önceki mesaja işaret ediyorsa o bilgiyi önceki konuşmadan alıp yaz. Belli bir saatte haber verilmesi isteniyorsa bu değil, hatirlatma_ekle'dir.
 - {"ad":"hafiza_ara","metin":"konuyu anlatan 2-5 anahtar kelime"} kullanıcının daha önce kaydettiği notlarda, bağlantılarda ve fotoğraflarda arar. Kullanıcı daha önce kaydettiği ya da söylediği bir şeyi, kişisel bir bilgiyi (bir kişinin doğum günü, bir site, bir adres, bir fotoğraf) sorarsa kullan. Anahtar kelimelere eş anlamlılarını da ekle.
@@ -350,6 +351,8 @@ export function toSteps(actions, nowMs, message = "") {
       if (text) steps.push({ type: "run", command: "aklimda", args: `ekle ${text}` });
     } else if (a.ad === "aklimda_liste") {
       steps.push({ type: "run", command: "aklimda", args: "" });
+    } else if (a.ad === "ani_defteri") {
+      steps.push({ type: "run", command: "ani", args: "" });
     } else if (a.ad === "aklimda_bitti") {
       const word = (a.metin ?? "").replace(/\s+/g, " ").trim();
       if (word) steps.push({ type: "run", command: "aklimda", args: `bitti ${word}` });

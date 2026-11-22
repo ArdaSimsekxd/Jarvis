@@ -17,7 +17,7 @@ export const PANEL_HTML = String.raw`<!doctype html>
 <link rel="manifest" href="/panel/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #03070d; --panel: rgba(8, 24, 38, .62); --line: rgba(63, 216, 255, .22); --cyan: #3fd8ff; --cyan-soft: rgba(63, 216, 255, .55);
@@ -156,6 +156,78 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
 .found b { font: 700 34px var(--head); letter-spacing: .18em; text-shadow: 0 0 24px rgba(63, 216, 255, .7); }
 .found span { color: var(--muted); font-size: 18px; }
 
+/* ---------- Anı defteri ---------- */
+.anibox { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.anithumb { flex: 0 0 auto; width: 74px; height: 84px; background: #f7f0e1; padding: 5px 5px 14px; transform: rotate(-4deg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .5); display: grid; place-items: center; font-size: 30px; }
+.anithumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.anitext { min-width: 0; font-size: 18px; color: #fff; }
+.anibtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.anibtns button { flex: 1 1 auto; }
+.aniform { display: grid; gap: 8px; margin-top: 12px; }
+.aniform img { max-width: 100%; max-height: 220px; justify-self: center; border: 6px solid #f7f0e1; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.anirow { display: flex; gap: 8px; }
+.anirow input { flex: 1 1 auto; min-width: 0; }
+.aniwarn { color: var(--amber); font-size: 15px; }
+input[type=date] { font: 500 16px var(--body); color: var(--text); background: rgba(3, 7, 13, .7); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px; color-scheme: dark; }
+
+.bookwrap { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); overflow: hidden;
+  background-color: #02050a; background-image: radial-gradient(900px 700px at 50% 45%, rgba(63, 216, 255, .13), transparent 65%); }
+.bookwrap.show { animation: bookin .35s ease-out; }
+@keyframes bookin { from { opacity: 0; transform: scale(.96); } }
+.booktop, .bookbar { width: min(100%, 520px); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.booktop { color: var(--cyan); font: 600 13px var(--head); letter-spacing: .16em; }
+.bookbar input { flex: 1 1 auto; accent-color: #3fd8ff; }
+.bookbar .mini { font-size: 18px; padding: 2px 14px; }
+.bookhint { color: var(--muted); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+.stage { touch-action: none; -webkit-user-select: none; user-select: none; padding-left: 6px; }
+.book { position: relative; width: min(86vw, 430px, calc((100vh - 190px) * .72)); aspect-ratio: 3 / 4.15; perspective: 2200px; }
+.book::before { content: ""; position: absolute; inset: 6px -6px -6px 6px; background: #d9cdb4; border-radius: 3px 10px 10px 3px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, .6), 0 0 40px rgba(63, 216, 255, .12); }
+.leaf { position: absolute; inset: 0; transform-origin: left center; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+  transition: transform .75s cubic-bezier(.22, .7, .22, 1); will-change: transform; }
+.face { position: absolute; inset: 0; overflow: hidden; border-radius: 2px 8px 8px 2px; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.face.back { transform: rotateY(180deg); border-radius: 8px 2px 2px 8px; }
+.face::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .75s;
+  background: linear-gradient(to left, rgba(0, 0, 0, .28), rgba(0, 0, 0, 0) 55%); }
+.face.back::after { background: linear-gradient(to right, rgba(0, 0, 0, .3), rgba(255, 255, 255, .08) 60%); }
+.leaf.turning .face::after { opacity: 1; }
+.paper { background: radial-gradient(130% 90% at 60% 40%, #fbf6ea, #efe4cc 92%);
+  color: #3a2f28; display: flex; flex-direction: column; align-items: center; padding: 18px 18px 14px 26px; }
+.paper::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to right, rgba(80, 55, 30, .22), rgba(80, 55, 30, 0) 7%), repeating-linear-gradient(transparent 0 31px, rgba(120, 150, 180, .16) 31px 32px); }
+.face.back.paper { background: radial-gradient(130% 90% at 40% 40%, #f3ead6, #e4d6b8 92%); }
+.hand { font-family: "Caveat", "Segoe Print", cursive; }
+.pdate { position: relative; font: 700 30px "Caveat", cursive; line-height: 1; color: #4b3a2e; text-align: center; }
+.pdate small { display: block; font-size: 19px; font-weight: 500; color: #8a7461; margin-top: 2px; }
+.polaroid { position: relative; margin: 14px 0 10px; background: #fff; padding: 8px 8px 30px; box-shadow: 0 6px 18px rgba(60, 40, 20, .35); width: 74%; }
+.polaroid.wide { width: 88%; }
+.polaroid .ph { width: 100%; aspect-ratio: 4 / 5; background: #e9e2d3 center / cover no-repeat; }
+.polaroid.wide .ph { aspect-ratio: 4 / 3; }
+.polaroid::before, .polaroid::after { content: ""; position: absolute; top: -10px; width: 70px; height: 22px; background: rgba(63, 216, 255, .38); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.polaroid::before { left: -14px; transform: rotate(-32deg); }
+.polaroid::after { right: -14px; transform: rotate(30deg); background: rgba(255, 181, 71, .42); }
+.pcap { position: relative; font: 500 25px/1.12 "Caveat", cursive; text-align: center; color: #2f2620; max-height: 3.4em; overflow: hidden; overflow-wrap: anywhere; }
+.pnum { position: absolute; bottom: 10px; right: 16px; font: 500 18px "Caveat", cursive; color: #9a8570; }
+.pdel { position: absolute; top: 8px; right: 8px; z-index: 2; background: rgba(255, 255, 255, .5); color: #8a5a4a; border-color: rgba(138, 90, 74, .35); font-size: 13px; padding: 4px 8px; }
+.pdel.warn { background: #fff; color: #c0392b; border-color: #c0392b; }
+.pend { justify-content: center; gap: 14px; text-align: center; }
+.pend .big2 { position: relative; font: 700 34px/1.1 "Caveat", cursive; color: #4b3a2e; }
+.pend button { position: relative; color: #2b6f8c; border-color: rgba(43, 111, 140, .5); background: rgba(255, 255, 255, .55); }
+.cover { background: radial-gradient(120% 90% at 30% 20%, #1c3346, #0b1520 70%); color: var(--cyan); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+.cover::before { content: ""; position: absolute; inset: 14px 14px 14px 22px; border: 2px dashed rgba(63, 216, 255, .35); border-radius: 4px; pointer-events: none; }
+.cover::after { background: linear-gradient(to right, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0) 9%) !important; opacity: 1 !important; }
+.cover .crest { width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--cyan); box-shadow: 0 0 26px var(--cyan-soft), inset 0 0 18px var(--cyan-soft);
+  display: grid; place-items: center; font-size: 40px; }
+.cover h3 { margin: 0; font: 700 24px var(--head); letter-spacing: .28em; text-shadow: 0 0 14px var(--cyan-soft); }
+.cover p { margin: 0; font: 500 26px "Caveat", cursive; color: #cfefff; }
+.cover .meta { font: 600 13px var(--body); letter-spacing: .2em; color: var(--muted); text-transform: uppercase; }
+.pback { justify-content: center; }
+.pback .mark { position: relative; font: 700 64px var(--head); color: rgba(75, 58, 46, .08); }
+@media (prefers-reduced-motion: reduce) { .leaf { transition-duration: .01s; } }
+
 @media (max-width: 980px) { .card, .card.wide { grid-column: span 6; } }
 @media (max-width: 680px) {
   .grid { grid-template-columns: 1fr; }
@@ -225,6 +297,21 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         <div class="toast" id="akState" aria-live="polite"></div>
         <div id="aklimda"></div>
       </section>
+      <section class="card"><h2>ANI DEFTERİ <span class="count" id="cAni"></span></h2>
+        <div class="anibox">
+          <div class="anithumb" id="aniThumb">📖</div>
+          <div class="anitext"><div id="aniStatus">Her güne bir fotoğraf</div><div class="sub" id="aniSub"></div></div>
+        </div>
+        <div class="anibtns"><button type="button" id="aniAdd">📷 Bugünü ekle</button><button type="button" id="aniOpen">📖 Defteri aç</button></div>
+        <form class="aniform hidden" id="aniForm" autocomplete="off">
+          <img id="aniPreview" alt="Seçilen fotoğraf">
+          <input type="text" id="aniCap" maxlength="200" placeholder="Bugün nasıldı? (isteğe bağlı)" aria-label="Fotoğrafın notu">
+          <div class="anirow"><input type="date" id="aniDay" aria-label="Gün"><button type="submit" id="aniSave">Kaydet</button><button type="button" id="aniCancel">Vazgeç</button></div>
+          <div class="aniwarn" id="aniWarn"></div>
+        </form>
+        <div class="toast" id="aniState" aria-live="polite"></div>
+        <input type="file" id="aniFile" accept="image/*" class="hidden">
+      </section>
       <section class="card"><h2>BUGÜN <span class="count" id="cLessons"></span></h2><div id="lessons"></div></section>
       <section class="card wide"><h2>ÖDEVLER <span class="count" id="cHomework"></span></h2><div id="homework"></div></section>
       <section class="card wide"><h2>YAKLAŞANLAR <span class="count" id="cUpcoming"></span></h2><div id="upcoming"></div></section>
@@ -247,6 +334,12 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       <section class="card"><h2>DOSYALAR <span class="count" id="cFiles"></span></h2><div id="files"></div></section>
     </main>
     <footer id="foot"></footer>
+  </div>
+  <div class="bookwrap hidden" id="book" role="dialog" aria-modal="true" aria-label="Anı defteri">
+    <div class="booktop"><span id="bookPos">ANI DEFTERİ</span><span><button type="button" class="mini" id="bookSound" aria-label="Sayfa sesi">🔊</button> <button type="button" class="mini" id="bookClose">Kapat ✕</button></span></div>
+    <div class="stage" id="stage"><div class="book" id="bookPages"></div></div>
+    <div class="bookbar"><button type="button" class="mini" id="bookPrev" aria-label="Önceki sayfa">‹</button><input type="range" id="bookRange" min="0" max="0" value="0" aria-label="Sayfaya git"><button type="button" class="mini" id="bookNext" aria-label="Sonraki sayfa">›</button></div>
+    <div class="bookhint">Sayfayı parmağınla çevir ya da kenarına dokun</div>
   </div>
   <div class="found hidden" id="found" role="status"><b>📍 BULDUN</b><span>Bildirimler durdu.</span></div>
 </div>
@@ -402,6 +495,349 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
       .then(function () { input.disabled = false; input.focus(); });
   });
 
+  // ---------- Anı defteri: her güne bir fotoğraf, sayfaları çevrilen bir defter ----------
+  var MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+  var fWeek = new Intl.DateTimeFormat("tr-TR", { timeZone: "UTC", weekday: "long" });
+  function dayParts(d) { var p = d.split("-").map(Number); return { y: p[0], m: p[1], d: p[2] }; }
+  function dayTitle(d) { var p = dayParts(d); return p.d + " " + MONTHS[p.m - 1] + " " + p.y; }
+  function weekday(d) { var p = dayParts(d); return fWeek.format(new Date(Date.UTC(p.y, p.m - 1, p.d))); }
+  var aniUrls = {};
+  function aniPhoto(d, v) {
+    var id = d + "." + v;
+    if (!aniUrls[id]) {
+      aniUrls[id] = fetch("/panel/ani/foto?d=" + d + "&v=" + encodeURIComponent(v), { headers: { Authorization: "Bearer " + key } })
+        .then(function (res) { if (!res.ok) throw new Error("http"); return res.blob(); })
+        .then(function (b) { return URL.createObjectURL(b); })
+        .catch(function (err) { delete aniUrls[id]; throw err; });
+    }
+    return aniUrls[id];
+  }
+  var aniSum = null, aniDays = null;
+  function renderAni(data) {
+    var s = data.ani || { count: 0, today: false, streak: 0, last: null };
+    aniSum = s;
+    $("cAni").textContent = s.count ? s.count + " sayfa" : "";
+    $("aniStatus").textContent = s.today ? "Bugünün sayfası hazır ✓" : "Bugün henüz fotoğraf yok";
+    $("aniSub").textContent = s.streak >= 2 ? "🔥 " + s.streak + " gün üst üste" : s.last ? "Son sayfa: " + dayTitle(s.last.d) : "İlk sayfanı bugün aç. Telegram'da fotoğrafın altına \"anı\" yazman da yeter.";
+    $("aniAdd").textContent = s.today ? "📷 Bugünü değiştir" : "📷 Bugünü ekle";
+    var thumb = $("aniThumb");
+    if (!s.last) { thumb.textContent = "📖"; return; }
+    if (thumb.getAttribute("data-id") === s.last.d + s.last.v) return;
+    thumb.setAttribute("data-id", s.last.d + s.last.v);
+    aniPhoto(s.last.d, s.last.v).then(function (u) { thumb.textContent = ""; var im = el("img"); im.alt = dayTitle(s.last.d); im.src = u; thumb.appendChild(im); }).catch(function () {});
+  }
+
+  // Fotoğraf seçilince küçültülür (en uzun kenar 1440 px, JPEG): yükleme hızlı olur, defter yer kaplamaz
+  function shrink(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        var s = Math.min(1, 1440 / Math.max(im.naturalWidth, im.naturalHeight));
+        var c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(im.naturalWidth * s)); c.height = Math.max(1, Math.round(im.naturalHeight * s));
+        var g = c.getContext("2d");
+        g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(im, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        (function enc(q) {
+          c.toBlob(function (b) {
+            if (!b) return reject(new Error("resim"));
+            if (b.size > 1400000 && q > .5) return enc(q - .13);
+            resolve(b);
+          }, "image/jpeg", q);
+        })(.85);
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); reject(new Error("resim")); };
+      im.src = url;
+    });
+  }
+  function blobB64(b) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(",")[1] || ""); };
+      r.onerror = function () { reject(new Error("okuma")); };
+      r.readAsDataURL(b);
+    });
+  }
+  function aniList() {
+    return fetch("/panel/ani", { headers: { Authorization: "Bearer " + key }, cache: "no-store" })
+      .then(function (res) { if (!res.ok) throw new Error("http"); return res.json(); })
+      .then(function (r) { aniDays = r.days || []; return aniDays; });
+  }
+  var aniBlob = null;
+  function aniWarn() {
+    var d = $("aniDay").value, has = (aniDays || []).some(function (x) { return x.d === d; });
+    $("aniWarn").textContent = has ? "Bu günün sayfası zaten var; fotoğrafı yenisiyle değişecek." : "";
+  }
+  $("aniAdd").addEventListener("click", function () { $("aniFile").value = ""; $("aniFile").click(); });
+  $("aniFile").addEventListener("change", function () {
+    var f = $("aniFile").files && $("aniFile").files[0];
+    if (!f) return;
+    $("aniState").textContent = "Fotoğraf hazırlanıyor…";
+    shrink(f).then(function (b) {
+      aniBlob = b;
+      var old = $("aniPreview").src; if (old && old.indexOf("blob:") === 0) URL.revokeObjectURL(old);
+      $("aniPreview").src = URL.createObjectURL(b);
+      var today = fKey.format(new Date());
+      $("aniDay").value = today; $("aniDay").max = today;
+      $("aniCap").value = "";
+      $("aniForm").classList.remove("hidden");
+      $("aniState").textContent = "";
+      aniWarn();
+      aniList().then(aniWarn).catch(function () {});
+      $("aniCap").focus();
+    }).catch(function () { $("aniState").textContent = "Bu fotoğrafı açamadım. Başka bir fotoğraf dener misin?"; });
+  });
+  $("aniDay").addEventListener("change", aniWarn);
+  $("aniCancel").addEventListener("click", function () { $("aniForm").classList.add("hidden"); aniBlob = null; $("aniState").textContent = ""; });
+  $("aniForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!aniBlob) return;
+    var btn = $("aniSave"), d = $("aniDay").value;
+    btn.disabled = true; $("aniState").textContent = "Deftere yapıştırılıyor…";
+    blobB64(aniBlob).then(function (img) {
+      return fetch("/panel/ani", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ d: d, cap: $("aniCap").value, img: img }) });
+    }).then(function (res) { return res.json().then(function (r) { return { ok: res.ok, r: r }; }); })
+      .then(function (x) {
+        if (!x.ok) { $("aniState").textContent = x.r.error || "Kaydedilemedi."; return; }
+        $("aniForm").classList.add("hidden"); aniBlob = null;
+        $("aniState").textContent = "📖 " + dayTitle(d) + " sayfası deftere eklendi.";
+        load();
+      })
+      .catch(function () { $("aniState").textContent = "Jarvis'e ulaşılamadı, yeniden dener misin?"; })
+      .then(function () { btn.disabled = false; });
+  });
+
+  // Sayfa sesi: kısa bir kâğıt hışırtısı (Web Audio ile üretilir, dosya yok)
+  var SOUND = "jarvis-ani-ses", soundOn = true, actx = null;
+  try { soundOn = localStorage.getItem(SOUND) !== "0"; } catch (e) {}
+  function soundLabel() { $("bookSound").textContent = soundOn ? "🔊" : "🔇"; }
+  function rustle() {
+    if (!soundOn) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      var len = Math.floor(actx.sampleRate * .32), buf = actx.createBuffer(1, len, actx.sampleRate), ch = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.6);
+      var src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain(), t = actx.currentTime;
+      src.buffer = buf; bp.type = "bandpass"; bp.Q.value = .8;
+      bp.frequency.setValueAtTime(1800, t); bp.frequency.linearRampToValueAtTime(4200, t + .28);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.16, t + .04); g.gain.exponentialRampToValueAtTime(.001, t + .32);
+      src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t);
+    } catch (e) {}
+  }
+  $("bookSound").addEventListener("click", function () {
+    soundOn = !soundOn; soundLabel();
+    try { localStorage.setItem(SOUND, soundOn ? "1" : "0"); } catch (e) {}
+    rustle();
+  });
+
+  var bk = { pages: [], els: {}, cur: 0, busy: false };
+  function paperFace(cls) { return el("div", "face paper " + (cls || "")); }
+  function backFace() { var f = el("div", "face back paper pback"); f.appendChild(el("div", "mark", "J")); return f; }
+  function buildLeaf(i) {
+    var pg = bk.pages[i], leaf = el("div", "leaf"), front;
+    if (pg.t === "cover") {
+      front = el("div", "face cover");
+      front.appendChild(el("div", "crest", "📖"));
+      front.appendChild(el("h3", null, "ANI DEFTERİ"));
+      front.appendChild(el("p", null, "Her gün bir sayfa"));
+      var days = bk.pages.length - 2;
+      front.appendChild(el("div", "meta", days ? days + " sayfa" + (aniSum && aniSum.streak >= 2 ? " · 🔥 " + aniSum.streak + " gün" : "") : "Henüz boş"));
+    } else if (pg.t === "end") {
+      front = paperFace("pend");
+      var today = fKey.format(new Date()), has = bk.pages.some(function (p) { return p.d === today; });
+      front.appendChild(el("div", "big2", has ? "Bugünün sayfası tamam ✓" : "Bugünün sayfası boş"));
+      front.appendChild(el("div", "pcap", has ? "Yarın yeni bir sayfa seni bekliyor." : "Bir fotoğraf çek, defter seni bekliyor."));
+      var add = el("button", null, has ? "📷 Değiştir" : "📷 Fotoğraf ekle");
+      add.type = "button";
+      add.addEventListener("click", function () { closeBook(); $("aniFile").value = ""; $("aniFile").click(); });
+      front.appendChild(add);
+    } else {
+      front = paperFace();
+      var date = el("div", "pdate", dayTitle(pg.d));
+      date.appendChild(el("small", null, weekday(pg.d)));
+      front.appendChild(date);
+      var pol = el("div", "polaroid"), ph = el("div", "ph");
+      pol.style.transform = "rotate(" + (i % 2 ? 1.6 : -1.8) + "deg)";
+      pol.appendChild(ph); front.appendChild(pol);
+      if (pg.cap) front.appendChild(el("div", "pcap", pg.cap));
+      front.appendChild(el("div", "pnum", String(i)));
+      var del = el("button", "mini pdel", "🗑");
+      del.type = "button"; del.setAttribute("aria-label", dayTitle(pg.d) + " sayfasını sil");
+      var armed = null;
+      del.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (!armed) { del.classList.add("warn"); del.textContent = "Silinsin mi?"; armed = setTimeout(function () { armed = null; del.classList.remove("warn"); del.textContent = "🗑"; }, 3000); return; }
+        clearTimeout(armed); del.disabled = true;
+        fetch("/panel/ani", { method: "DELETE", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ d: pg.d }) })
+          .then(function (res) { if (!res.ok && res.status !== 404) throw new Error("http"); removePage(i); load(); })
+          .catch(function () { del.disabled = false; del.textContent = "🗑"; del.classList.remove("warn"); armed = null; });
+      });
+      front.appendChild(del);
+      pg.ph = ph; pg.pol = pol;
+    }
+    leaf.appendChild(front);
+    leaf.appendChild(backFace());
+    return leaf;
+  }
+  function leafAt(i) { if (!bk.els[i]) bk.els[i] = buildLeaf(i); return bk.els[i]; }
+  function loadPhoto(i) {
+    var pg = bk.pages[i];
+    if (!pg || !pg.d || pg.loaded) return;
+    leafAt(i);
+    pg.loaded = true;
+    aniPhoto(pg.d, pg.v).then(function (u) {
+      var probe = new Image();
+      probe.onload = function () { if (probe.naturalWidth > probe.naturalHeight * 1.1) pg.pol.classList.add("wide"); pg.ph.style.backgroundImage = "url(\"" + u + "\")"; };
+      probe.src = u;
+    }).catch(function () { pg.loaded = false; });
+  }
+  // Yalnızca açık sayfa, altındaki ve bir önceki (çevrilmiş) sayfa sahnede durur
+  function layout() {
+    var box = $("bookPages"), n = bk.pages.length;
+    box.textContent = "";
+    [bk.cur + 1, bk.cur, bk.cur - 1].forEach(function (i) {
+      if (i < 0 || i >= n) return;
+      var leaf = leafAt(i);
+      leaf.classList.remove("turning");
+      leaf.style.transition = "none";
+      leaf.style.zIndex = String(n - i);
+      leaf.style.transform = i < bk.cur ? "rotateY(-180deg)" : "rotateY(0deg)";
+      leaf.style.visibility = i < bk.cur ? "hidden" : "visible";
+      box.appendChild(leaf);
+    });
+    void box.offsetWidth;
+    [bk.cur - 1, bk.cur, bk.cur + 1, bk.cur + 2].forEach(loadPhoto);
+    var pg = bk.pages[bk.cur];
+    $("bookPos").textContent = pg.t === "cover" ? "ANI DEFTERİ" : pg.t === "end" ? "SON SAYFA" : bk.cur + " / " + (n - 2) + " · " + dayTitle(pg.d).toUpperCase();
+    $("bookRange").max = String(n - 1); $("bookRange").value = String(bk.cur);
+    $("bookPrev").disabled = bk.cur === 0; $("bookNext").disabled = bk.cur === n - 1;
+  }
+  function animate(leaf, deg, done) {
+    leaf.style.transition = "";
+    leaf.classList.add("turning");
+    var finished = false;
+    function end() { if (finished) return; finished = true; leaf.removeEventListener("transitionend", onEnd); done(); }
+    function onEnd(ev) { if (ev.target === leaf && ev.propertyName === "transform") end(); }
+    leaf.addEventListener("transitionend", onEnd);
+    setTimeout(end, 900);
+    leaf.style.transform = "rotateY(" + deg + "deg)";
+  }
+  function next() {
+    if (bk.busy || bk.cur >= bk.pages.length - 1) return;
+    bk.busy = true; rustle();
+    animate(leafAt(bk.cur), -180, function () { bk.cur++; bk.busy = false; layout(); });
+  }
+  function prev() {
+    if (bk.busy || bk.cur <= 0) return;
+    bk.busy = true; rustle();
+    var leaf = leafAt(bk.cur - 1);
+    leaf.style.visibility = "visible";
+    void leaf.offsetWidth;
+    animate(leaf, 0, function () { bk.cur--; bk.busy = false; layout(); });
+  }
+  function jump(i) { if (bk.busy || i === bk.cur) return; bk.cur = Math.max(0, Math.min(bk.pages.length - 1, i)); layout(); }
+  function removePage(i) {
+    bk.pages.splice(i, 1);
+    bk.els = {};
+    bk.pages.forEach(function (p) { p.loaded = false; });
+    if (bk.cur >= bk.pages.length) bk.cur = bk.pages.length - 1;
+    layout();
+  }
+  function openBook() {
+    var b = $("aniOpen");
+    b.disabled = true;
+    aniList().then(function (days) {
+      bk.pages = [{ t: "cover" }].concat(days.map(function (x) { return { t: "day", d: x.d, cap: x.cap, v: x.v }; }), [{ t: "end" }]);
+      bk.els = {}; bk.busy = false;
+      var target = days.length ? days.length : 1;
+      bk.cur = 0;
+      $("book").classList.remove("hidden"); $("book").classList.add("show");
+      document.body.style.overflow = "hidden";
+      soundLabel();
+      layout();
+      // Kapak açılır ve defter en son sayfadan başlar: kapağın altına son sayfa konur
+      if (target !== 1) {
+        var box = $("bookPages"), first = leafAt(1), under = leafAt(target);
+        if (first.parentNode === box) box.removeChild(first);
+        under.style.transition = "none"; under.style.transform = "rotateY(0deg)"; under.style.visibility = "visible"; under.style.zIndex = "1";
+        box.insertBefore(under, box.firstChild);
+      }
+      loadPhoto(target);
+      bk.busy = true;
+      setTimeout(function () {
+        rustle();
+        animate(leafAt(0), -180, function () { bk.cur = target; bk.busy = false; layout(); });
+      }, 450);
+    }).catch(function () { $("aniState").textContent = "Defter açılamadı, yeniden dener misin?"; })
+      .then(function () { b.disabled = false; });
+  }
+  function closeBook() {
+    $("book").classList.add("hidden"); $("book").classList.remove("show");
+    document.body.style.overflow = "";
+    $("bookPages").textContent = "";
+    bk.els = {};
+  }
+  $("aniOpen").addEventListener("click", openBook);
+  $("bookClose").addEventListener("click", closeBook);
+  $("bookNext").addEventListener("click", next);
+  $("bookPrev").addEventListener("click", prev);
+  $("bookRange").addEventListener("input", function () { jump(Number($("bookRange").value)); });
+  $("bookRange").addEventListener("change", rustle);
+  document.addEventListener("keydown", function (ev) {
+    if ($("book").classList.contains("hidden")) return;
+    if (ev.key === "Escape") closeBook();
+    if (ev.key === "ArrowRight") next();
+    if (ev.key === "ArrowLeft") prev();
+  });
+  // Parmakla çevirme: sayfa parmağı izler; yarıdan fazla çevrilince kendiliğinden tamamlanır
+  var drag = null;
+  $("stage").addEventListener("pointerdown", function (ev) {
+    if (bk.busy || ev.target.closest("button")) return;
+    drag = { x: ev.clientX, t: Date.now(), w: $("bookPages").offsetWidth, leaf: null, mode: null, deg: 0 };
+    try { $("stage").setPointerCapture(ev.pointerId); } catch (e) {}
+  });
+  $("stage").addEventListener("pointermove", function (ev) {
+    if (!drag) return;
+    var dx = ev.clientX - drag.x;
+    if (!drag.mode) {
+      if (Math.abs(dx) < 8) return;
+      if (dx < 0 && bk.cur < bk.pages.length - 1) drag.mode = "next";
+      else if (dx > 0 && bk.cur > 0) drag.mode = "prev";
+      else return;
+      drag.leaf = leafAt(drag.mode === "next" ? bk.cur : bk.cur - 1);
+      drag.leaf.style.transition = "none";
+      drag.leaf.style.visibility = "visible";
+      drag.leaf.classList.add("turning");
+    }
+    var f = Math.max(0, Math.min(1, Math.abs(dx) / (drag.w * 1.05)));
+    drag.deg = drag.mode === "next" ? (dx < 0 ? -180 * f : 0) : (dx > 0 ? -180 + 180 * f : -180);
+    drag.leaf.style.transform = "rotateY(" + drag.deg + "deg)";
+  });
+  function endDrag(ev) {
+    if (!drag) return;
+    var d = drag; drag = null;
+    if (!d.mode) {
+      var r = $("bookPages").getBoundingClientRect(), x = (ev.clientX - r.left) / r.width;
+      if (ev.type === "pointerup" && Date.now() - d.t < 500) { if (x > .55) next(); else if (x < .4) prev(); }
+      return;
+    }
+    var fast = Date.now() - d.t < 280;
+    bk.busy = true;
+    if (d.mode === "next") {
+      var go = d.deg < -75 || (fast && d.deg < -12);
+      if (go) rustle();
+      animate(d.leaf, go ? -180 : 0, function () { if (go) bk.cur++; bk.busy = false; layout(); });
+    } else {
+      var back = d.deg > -105 || (fast && d.deg > -168);
+      if (back) rustle();
+      animate(d.leaf, back ? 0 : -180, function () { if (back) bk.cur--; bk.busy = false; layout(); });
+    }
+  }
+  $("stage").addEventListener("pointerup", endDrag);
+  $("stage").addEventListener("pointercancel", endDrag);
+
   // Bütün bekleyen hatırlatmalar. SİL'e iki kez dokununca silinir (yanlışlıkla silinmesin).
   function renderReminders(data) {
     var box = $("reminders"), ul = el("ul", "list"), list = data.reminders || [];
@@ -536,7 +972,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("greet").textContent = data.greeting + ".";
     $("dotCanvas").className = "dot " + (data.canvas ? "on" : "off");
     var left = renderLessons(data);
-    renderHomework(data); renderUpcoming(data); renderReminders(data); renderAklimda(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
+    renderHomework(data); renderUpcoming(data); renderReminders(data); renderAklimda(data); renderAni(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
     var late = data.homework.filter(function (h) { return h.overdue; }).length;
     var soon = data.homework.filter(function (h) { return !h.overdue && h.due - Date.now() < 3 * 864e5; }).length;
     var parts = [];

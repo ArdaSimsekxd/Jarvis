@@ -409,6 +409,7 @@ export const HELP = [
   "/hafiza — hafızana kaydettiklerin (ayrıntı: <code>/hafiza yardim</code>)",
   "/not Ahmet'in doğum günü 3 Mart — hafızana kaydet",
   "/aklimda süt al — saati olmayan yapılacaklar listesi (<code>/aklimda</code> liste, <code>/aklimda bitti 1</code>)",
+  "/ani — anı defteri: fotoğrafın altına <code>anı</code> yazıp gönder, o günün sayfası olur; panelde sayfaları çevir",
   "/tarihler — mail ve duyurulardan bulduğum yaklaşan tarihler",
   "",
   "/ara soru — internette ara (ör. <code>/ara RTX 5070 fiyatı</code>)",
