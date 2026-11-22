@@ -9,7 +9,7 @@ import { handleMessage } from "../src/index.js";
 import { trToMs } from "../src/logic.js";
 
 const NOW = trToMs(2026, 11, 22, 13, 12);
-const ARRIVE = `${BASE}/OtobusTramvayHatlari/AracNeZamanGelecek/`;
+const ARRIVE = `${BASE}/OtobusTramvayHatlari/DurakDetay?DurakID=`;
 const SEARCH = `${BASE}/OtobusTramvayHatlari/DurakListInp/`;
 const MAP = `${BASE}/OtobusTramvayHatlari/OtobusDuraklariHaritaJSON`;
 const AGU = { lat: 38.740692, lon: 35.476428 };
@@ -56,7 +56,7 @@ function fakeCtx({ kv = fakeKv(), routes = {} } = {}) {
       if (!hit) throw new Error(`beklenmeyen istek ${url}`);
       const r = typeof hit[1] === "function" ? hit[1](url, init) : hit[1];
       if (r instanceof Error) throw r;
-      return { ok: r.status === 200, status: r.status, json: async () => r.body };
+      return { ok: r.status === 200, status: r.status, headers: new Headers({ "content-type": "application/json; charset=utf-8" }), json: async () => r.body, text: async () => JSON.stringify(r.body) };
     },
   };
 }
@@ -74,6 +74,7 @@ test("otobüs: geliş süreleri okunur, aynı hat tek satır olur", () => {
   assert.equal(list.find((x) => x.code === "15").name, "Talas - Erkilet", "baştaki '15 TE' atılır");
   assert.equal(list[0].type, "tram");
   assert.deepEqual(parseArrivals({ hata: 1 }), []);
+  assert.equal(parseArrivals({ list: ARRIVALS }).length, 7, "sarılı liste de okunur");
   const lines = groupByLine(parseArrivals(ARRIVALS));
   assert.deepEqual(lines.find((l) => l.code === "485").mins, [13, 23]);
   const text = formatStop({ id: "7548", label: "okul" }, parseArrivals(ARRIVALS), NOW);
@@ -96,8 +97,9 @@ test("otobüs: durak numarasıyla sorulur, adı siteden gelir, hatların durakla
   assert.match(text, /^🚌 <b>Erkilet Bulv\. AGÜ 1<\/b> \(7548\)/);
   assert.match(text, /<b>15<\/b> Talas - Erkilet · 10 dk/);
   const arrive = ctx.calls.find((c) => c.url.startsWith(ARRIVE));
-  assert.equal(arrive.url, `${ARRIVE}007548`);
-  assert.equal(arrive.init.method, "POST");
+  assert.equal(arrive.url, `${ARRIVE}7548`);
+  assert.equal(arrive.init.method, undefined, "GET");
+  assert.equal(arrive.init.headers["Content-Type"], undefined);
   assert.equal(arrive.init.headers["X-Requested-With"], "XMLHttpRequest");
   assert.equal(ctx.calls.find((c) => c.url.startsWith(SEARCH)).init.body, JSON.stringify({ Search: "7548" }));
   const maps = ctx.calls.filter((c) => c.url.startsWith(MAP)).map((c) => c.url.slice(MAP.length));
@@ -123,7 +125,17 @@ test("otobüs: kaydet, adla sor, sil", async () => {
   assert.match(await cmdOtobus("sil okul", ctx), /okul durağını sildim/);
   assert.match(await cmdOtobus("", ctx), /Henüz kayıtlı durak yok/);
   // Ad verilmezse sitedeki adın ilk parçası kullanılır
-  assert.match(await cmdOtobus("ekle 7548", ctx), /Erkilet Bulv\. AGÜ 1 durağını kaydettim: 7548\./);
+  assert.match(await cmdOtobus("ekle 7548", ctx), /Erkilet Blv 5 AGÜ durağını kaydettim: 7548\./);
+});
+
+test("otobüs: ad öğrenilmiş duraklardan gelir, test komutu ham cevabı gösterir", async () => {
+  const kv = fakeKv({ [INDEX_KEY]: JSON.stringify({ stops: { 7548: ["Erkilet Blv 5 AGÜ", 38.74069, 35.47643] }, lines: {} }) });
+  const ctx = fakeCtx({ kv, routes: { [SEARCH]: { status: 404, body: null } } });
+  assert.match(await cmdOtobus("7548", ctx), /^🚌 <b>Erkilet Blv 5 AGÜ<\/b> \(7548\)/);
+  assert.equal(ctx.calls.filter((c) => c.url.startsWith(SEARCH)).length, 0);
+  const t = await cmdOtobus("test 7548", fakeCtx());
+  assert.match(t, /<b>Geliş süreleri<\/b>: HTTP 200 · application\/json; charset=utf-8 · \d+ karakter\n<code>\[\{/);
+  assert.match(t, /<b>Durak arama<\/b>: HTTP 200/);
 });
 
 test("otobüs: durak arama ve siteye ulaşılamazsa", async () => {

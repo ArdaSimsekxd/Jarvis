@@ -30,7 +30,9 @@ export const BUS_HELP = [
   "Normal cümle de olur: \"okul durağına otobüs ne zaman gelir?\"",
 ].join("\n");
 
-const stopPath = (id) => String(id).padStart(6, "0");
+const getHeaders = () => { const { "Content-Type": _, ...h } = HEADERS; return h; };
+const arrivalsUrl = (id) => `${BASE}/OtobusTramvayHatlari/DurakDetay?DurakID=${encodeURIComponent(String(id))}`;
+const SEARCH_URL = `${BASE}/OtobusTramvayHatlari/DurakListInp/`;
 
 // "ŞEHİR MERKEZİ- ERKİLET BULV.AGÜ 1" -> "Şehir Merkezi - Erkilet Bulv. AGÜ 1". Üç harfli kısaltmalar (AGÜ, OSB) büyük kalır.
 const SMALL = new Set(["ve", "ile", "de", "da", "ki", "mah", "cad", "sok", "blv", "yol", "kat", "bul"]);
@@ -52,7 +54,7 @@ export function titleTr(text) {
 
 // Sitenin cevabı: [{ line: { code, name, type }, timeToStop, busLineDirection }]
 export function parseArrivals(data) {
-  if (!Array.isArray(data)) return [];
+  if (!Array.isArray(data)) data = Object.values(data ?? {}).find(Array.isArray) ?? [];   // { ...: [...] } biçimi de olur
   return data
     .map((x) => ({
       code: String(x?.line?.code ?? "").trim(),
@@ -80,7 +82,8 @@ export async function fetchArrivals(ctx, id) {
   const name = `otobus:${id}`;
   const hit = await ctx.cache?.get(name).catch(() => null);
   if (hit) return hit;
-  const res = await ctx.webFetch(`${BASE}/OtobusTramvayHatlari/AracNeZamanGelecek/${stopPath(id)}`, { method: "POST", headers: HEADERS, body: "" });
+  // Durak sayfası geliş sürelerini DurakDetay'dan okur (AracNeZamanGelecek yalnızca kısa bir özet döner)
+  const res = await ctx.webFetch(arrivalsUrl(id), { headers: getHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const list = parseArrivals(await res.json());
   await ctx.cache?.put(name, list, CACHE_TTL).catch(() => {});
@@ -108,7 +111,7 @@ export async function searchStops(ctx, query) {
   const name = `durak:${plain(q)}`;
   const hit = await ctx.cache?.get(name).catch(() => null);
   if (hit) return hit;
-  const res = await ctx.webFetch(`${BASE}/OtobusTramvayHatlari/DurakListInp/`, { method: "POST", headers: HEADERS, body: JSON.stringify({ Search: q }) });
+  const res = await ctx.webFetch(SEARCH_URL, { method: "POST", headers: HEADERS, body: JSON.stringify({ Search: q }) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const list = parseStops(await res.json());
   await ctx.cache?.put(name, list, NAME_TTL).catch(() => {});
@@ -116,8 +119,11 @@ export async function searchStops(ctx, query) {
 }
 
 // Durak numarasının sitedeki adı; bulunamazsa boş (ad yalnızca süs, hata cevabı bozmaz)
+// Önce öğrenilmiş durak listesine, yoksa sitenin arama kutusuna bakılır.
 export async function stopName(ctx, id) {
   try {
+    const known = (await loadIndex(ctx.kv)).stops[String(id)]?.[0];
+    if (known) return known;
     return (await searchStops(ctx, id)).find((s) => s.id === String(id))?.name ?? "";
   } catch {
     return "";
@@ -153,8 +159,7 @@ export function parseMapStops(data) {
 
 async function fetchLineStops(ctx, code, direction) {
   const url = `${BASE}/OtobusTramvayHatlari/OtobusDuraklariHaritaJSON?lineId=${encodeURIComponent(code)}&directions=${direction}`;
-  const { "Content-Type": _, ...headers } = HEADERS;
-  const res = await ctx.webFetch(url, { headers });
+  const res = await ctx.webFetch(url, { headers: getHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseMapStops(await res.json());
 }
@@ -264,6 +269,25 @@ export async function busLocation(loc, ctx) {
   return arrivalsText(ctx, near.map((s) => ({ id: s.id, label: "", name: s.name, km: s.km })));
 }
 
+// "/otobus test 7548": site değişti mi diye ham cevapların başını gösterir (yalnızca herkese açık durak verisi)
+async function busTest(ctx, id) {
+  const probes = [
+    ["Geliş süreleri", arrivalsUrl(id), { headers: getHeaders() }],
+    ["Durak arama", SEARCH_URL, { method: "POST", headers: HEADERS, body: JSON.stringify({ Search: id }) }],
+  ];
+  const out = [`🔧 <b>Otobüs testi</b> · durak ${esc(id)}`];
+  for (const [label, url, init] of probes) {
+    try {
+      const res = await ctx.webFetch(url, init);
+      const body = await res.text();
+      out.push(`<b>${label}</b>: HTTP ${res.status} · ${esc(res.headers?.get?.("content-type") ?? "?")} · ${body.length} karakter\n<code>${esc(body.slice(0, 160))}</code>`);
+    } catch (err) {
+      out.push(`<b>${label}</b>: ulaşılamadı (${esc(String(err?.message ?? err).slice(0, 80))})`);
+    }
+  }
+  return out.join("\n\n");
+}
+
 const stopLine = (s) => `<code>${esc(s.id)}</code> ${esc(s.name)}`;
 
 // "/otobus" komutu
@@ -274,6 +298,7 @@ export async function cmdOtobus(args, ctx) {
   const stops = await loadStops(ctx.kv);
 
   if (["yardim", "help"].includes(first)) return BUS_HELP;
+  if (first === "test") return busTest(ctx, /^\d{1,6}$/.test(words[1] ?? "") ? String(Number(words[1])) : "7548");
   if (["ara", "bul"].includes(first)) {
     const q = words.slice(1).join(" ");
     if (!q) return "Ne arayayım? Örnek: <code>/otobus ara erkilet</code>";
