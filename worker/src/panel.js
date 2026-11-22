@@ -441,7 +441,7 @@ export async function handlePanel(request, ctx, src) {
     const location = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: lat, longitude: lon } : null;
     if (!text && !location) return json({ replies: [] });
     try {
-      return json({ replies: await src.chat(text, location) });
+      return json({ replies: await src.chat(text, location, ["bus", "tram"].includes(body.only) ? body.only : null) });
     } catch (err) {
       console.error("uygulama sohbeti cevaplanamadı", err?.message);
       return json({ replies: ["Şu an cevap veremedim, biraz sonra yeniden dener misin?"] });

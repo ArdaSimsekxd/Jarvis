@@ -113,3 +113,17 @@ test("tramvay: yapay zekâ adımı", () => {
   const steps = toSteps([{ ad: "tramvay", metin: "Cumhuriyet Meydanı'na" }, { ad: "tramvay", metin: "tramvay durağı ildem1" }], {});
   assert.deepEqual(steps.map((s) => [s.type, s.command, s.args]), [["private", "tramvay", "Cumhuriyet Meydanı"], ["private", "tramvay", "ildem1"]]);
 });
+
+test("tramvay: panel düğmeleri ayrı (🚌 yalnız otobüs, 🚋 yalnız tramvay)", async () => {
+  const near = { latitude: 38.7826, longitude: 35.6012 };
+  const tramOnly = fakeCtx();
+  const t = await busLocation(near, tramOnly, { only: "tram" });
+  assert.match(t, /^🚋 <b>İldem1<\/b> tramvay durağı/);
+  assert.equal(tramOnly.calls.some((c) => c.url.includes("DurakDetay")), false, "otobüse bakılmaz");
+  const far = await busLocation({ latitude: 38.70, longitude: 35.52 }, tramOnly, { only: "tram" });
+  assert.match(far, /Yakınında \(800\u00a0m içinde\) tramvay durağı yok\. En yakın tramvay durağı <b>Cumhuriyet Meydanı<\/b>, 3\.7\u00a0km uzakta/);
+  const busOnly = fakeCtx();
+  const b = await busLocation(near, busOnly, { only: "bus" });
+  assert.doesNotMatch(b, /🚋/);
+  assert.equal(busOnly.calls.some((c) => c.url.includes("lineId=T")), false, "tramvaya bakılmaz");
+});

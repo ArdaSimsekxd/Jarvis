@@ -134,7 +134,7 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .chatform { display: flex; gap: 8px; }
 .chatform input { min-width: 0; flex: 1 1 auto; }
 .sendico { display: none; }
-@media (max-width: 480px) { .chatform .mic { width: 46px; } .chatform button[type=submit] { flex: 0 0 auto; width: 52px; padding: 0; font-size: 20px; } .sendtxt { display: none; } .sendico { display: inline; } }
+@media (max-width: 480px) { .chatform { gap: 6px; } .chatform .mic { width: 40px; font-size: 19px; } .chatform button[type=submit] { flex: 0 0 auto; width: 52px; padding: 0; font-size: 20px; } .sendtxt { display: none; } .sendico { display: inline; } }
 .mic { flex: 0 0 auto; width: 52px; font-size: 22px; padding: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .mic.rec { background: rgba(255, 77, 109, .22); border-color: #ff4d6d; box-shadow: 0 0 18px rgba(255, 77, 109, .55); animation: pulse 1s ease-in-out infinite; }
 .mic:disabled { opacity: .5; }
@@ -284,6 +284,7 @@ input[type=date] { font: 500 16px var(--body); color: var(--text); background: r
         <form class="chatform" id="chatForm" autocomplete="off">
           <input type="text" id="chatInput" placeholder="Jarvis'e yaz: yarın derslerim ne?" maxlength="1000" aria-label="Jarvis'e mesaj">
           <button type="button" id="bus" class="mic" aria-label="Yakınımdaki otobüsler" title="Yakınımdaki durağa gelen otobüsler (konumunu bir kez kullanır)">🚌</button>
+          <button type="button" id="tram" class="mic" aria-label="Yakınımdaki tramvay" title="Yakınımdaki tramvay durağı (konumunu bir kez kullanır)">🚋</button>
           <button type="button" id="mic" class="mic" aria-label="Basılı tut ve konuş" title="Basılı tut ve konuş (ya da dokun, konuş, yeniden dokun)">🎙</button>
           <button type="submit" aria-label="Gönder"><span class="sendtxt">Gönder</span><span class="sendico">➤</span></button>
         </form>
@@ -1189,21 +1190,25 @@ input[type=date] { font: 500 16px var(--body); color: var(--text); background: r
     ask({ text: text });
   });
   // 🚌: o anki konumla en yakın durağa gelen otobüsler. Konum yalnızca bu soru için gönderilir.
-  $("bus").addEventListener("click", function () {
+  // 🚌 yalnız otobüs, 🚋 yalnız tramvay. Konum yalnızca o soru için gönderilir, saklanmaz.
+  function nearby(id, only, label, wait) {
+    var b = $(id);
     if (!navigator.geolocation) { micState("Bu tarayıcı konumu desteklemiyor."); return; }
-    $("bus").disabled = true;
+    b.disabled = true;
     micState("Konumunu alıyorum…");
     navigator.geolocation.getCurrentPosition(function (pos) {
-      micState(""); $("bus").disabled = false;
-      bubble("me", "🚌 Yakınımdaki otobüsler"); remember("me", "🚌 Yakınımdaki otobüsler");
-      ask({ location: { lat: pos.coords.latitude, lon: pos.coords.longitude } }, "En yakın durağa bakıyorum…");
+      micState(""); b.disabled = false;
+      bubble("me", label); remember("me", label);
+      ask({ location: { lat: pos.coords.latitude, lon: pos.coords.longitude }, only: only }, wait);
     }, function (err) {
-      $("bus").disabled = false;
+      b.disabled = false;
       micState(err && err.code === 1
         ? "Konum izni yok. iPhone'da Ayarlar > Gizlilik > Konum Servisleri > Safari Web Siteleri'nden izin ver, sonra yeniden dene."
         : "Konumunu alamadım. Biraz sonra yeniden dener misin?");
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
-  });
+  }
+  $("bus").addEventListener("click", function () { nearby("bus", "bus", "🚌 Yakınımdaki otobüsler", "En yakın durağa bakıyorum…"); });
+  $("tram").addEventListener("click", function () { nearby("tram", "tram", "🚋 Yakınımdaki tramvay", "En yakın tramvay durağına bakıyorum…"); });
 
   // Canlı bağlantı: yeni bir şey olunca Jarvis haber verir, ekran hemen yenilenir.
   var sock = null, wait = 2000, pinger = null;

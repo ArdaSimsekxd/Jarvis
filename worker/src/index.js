@@ -446,7 +446,8 @@ export async function handleMessage(message, ctx) {
   if (String(message?.chat?.id) !== String(ctx.chatId)) return; // sadece sahibine cevap ver
   if (message.photo?.length) return void await handlePhoto(message, ctx);
   // Konum: en yakın kayıtlı durağa yaklaşan otobüsler (ya da beklenen durağın yeri)
-  if (message.location) return void await deliver(ctx, [await busLocation(message.location, ctx)]);
+  // only: panelin 🚌 (yalnız otobüs) ve 🚋 (yalnız tramvay) düğmeleri; Telegram konumunda ikisi birlikte
+  if (message.location) return void await deliver(ctx, [await busLocation(message.location, ctx, { only: message.only })]);
   if (message.document && !message.text) {
     const image = /^image\//.test(message.document.mime_type ?? "");
     return void await ctx.send(image
@@ -521,7 +522,7 @@ export async function pushToApp(env, said) {
 }
 
 // Uygulamanın içinden yazılan mesaj: Telegram'daki gibi işlenir, cevaplar uygulamaya döner.
-async function appChat(env, c, text, ctx, location = null, label = null) {
+async function appChat(env, c, text, ctx, location = null, label = null, only = null) {
   const out = [];
   const chatCtx = {
     ...c,
@@ -529,9 +530,9 @@ async function appChat(env, c, text, ctx, location = null, label = null) {
     sendPhoto: async (photo, caption = "") => { out.push(caption ? `${caption}\n<i>(fotoğraf Telegram'a gönderildi)</i>` : "<i>📸 Fotoğrafı Telegram'a gönderdim.</i>"); return c.sendPhoto(photo, caption); },
     typing: async () => {},
   };
-  await handleMessage(location ? { chat: { id: c.chatId }, location } : { chat: { id: c.chatId }, text }, chatCtx);
+  await handleMessage(location ? { chat: { id: c.chatId }, location, only } : { chat: { id: c.chatId }, text }, chatCtx);
   // Ortak sohbet geçmişi: diğer cihazdaki panel de aynı konuşmayı görür (yenile haberinden önce yazılır)
-  const mine = label ?? (location ? "🚌 Yakınımdaki otobüsler" : text);
+  const mine = label ?? (location ? (only === "tram" ? "🚋 Yakınımdaki tramvay" : "🚌 Yakınımdaki otobüsler") : text);
   if (env.PC) {
     await pcCall(env, "chatadd", { items: [{ w: "me", t: mine }, ...(out.length ? out : ["Tamam."]).map((t) => ({ w: "bot", t }))] })
       .catch((err) => console.error("sohbet geçmişi yazılamadı", err?.message));
@@ -646,7 +647,7 @@ export default {
         reminders: () => listReminders(env.KV),
         names: () => courseNames(c),
         menu: () => c.fetchMenu(),
-        chat: (text, location) => appChat(env, c, text, ctx, location),
+        chat: (text, location, only) => appChat(env, c, text, ctx, location, null, only),
         voice: env.AI ? (bytes) => appVoice(env, c, bytes, ctx) : null,
         chatLog: env.PC ? async () => (await pcCall(env, "chatget")).log ?? [] : null,
         chatClear: env.PC ? () => pcCall(env, "chatclear") : null,
