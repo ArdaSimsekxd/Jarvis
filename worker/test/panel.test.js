@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  PANEL_KEY, buildPanel, cmdPanel, expenseSummary, greeting, handlePanel, homeworkItems, lessonDays, mailList, menuItems, upcomingItems,
+  MAX_PANEL_AUDIO, PANEL_KEY, buildPanel, cmdPanel, isWav, expenseSummary, greeting, handlePanel, homeworkItems, lessonDays, mailList, menuItems, upcomingItems,
 } from "../src/panel.js";
 import { PANEL_HTML } from "../src/panel_page.js";
 import { parseSchedule, trToMs } from "../src/logic.js";
@@ -151,4 +151,42 @@ test("panelden yalnızca güvenli bilgisayar işleri yapılır", async () => {
   const anon = await handlePanel(req("/panel/pc", { method: "POST", body: { is: "kilitle" } }), ctx, SRC);
   assert.equal(anon.status, 401);
   assert.equal(sent.length, 1);
+});
+
+function wavBytes(samples = 1600) {
+  const b = new Uint8Array(44 + samples * 2);
+  b.set([..."RIFF"].map((c) => c.charCodeAt(0)), 0);
+  b.set([..."WAVE"].map((c) => c.charCodeAt(0)), 8);
+  return b;
+}
+const voiceReq = (body, key = "dogru-anahtar") => new Request("https://j.example/panel/voice", {
+  method: "POST", headers: { ...(key ? { Authorization: `Bearer ${key}` } : {}), "Content-Type": "audio/wav" }, body,
+});
+
+test("panelde sesli komut: kayıt yazıya çevrilir ve sohbet gibi cevaplanır", async () => {
+  const { ctx } = panelCtx();
+  const heard = [];
+  const src = { ...SRC, voice: async (bytes) => { heard.push(bytes.length); return { text: "yarın derslerim ne", replies: ["📚 Yarın 2 ders"] }; } };
+  assert.equal(isWav(wavBytes()), true);
+  assert.equal(isWav(new TextEncoder().encode("x".repeat(100))), false);
+  assert.equal((await handlePanel(voiceReq(wavBytes(), null), ctx, src)).status, 401);
+  assert.equal((await handlePanel(voiceReq(wavBytes(), "yanlis"), ctx, src)).status, 401);
+  assert.equal(heard.length, 0, "anahtarsız ses dinlenmez");
+  const ok = await handlePanel(voiceReq(wavBytes()), ctx, src);
+  assert.deepEqual(await ok.json(), { text: "yarın derslerim ne", replies: ["📚 Yarın 2 ders"] });
+  assert.equal((await handlePanel(voiceReq("ogg değil wav"), ctx, src)).status, 400);
+  assert.equal((await handlePanel(voiceReq(new Uint8Array(MAX_PANEL_AUDIO + 10)), ctx, src)).status, 413);
+  const silent = await handlePanel(voiceReq(wavBytes()), ctx, { ...src, voice: async () => ({ text: "", replies: [] }) });
+  assert.match((await silent.json()).replies[0], /bir şey duyamadım/);
+  const broken = await handlePanel(voiceReq(wavBytes()), ctx, { ...src, voice: async () => { throw new Error("x"); } });
+  assert.match((await broken.json()).replies[0], /yazıya çeviremedim/);
+  const none = await handlePanel(voiceReq(wavBytes()), ctx, { ...src, voice: null });
+  assert.match((await none.json()).replies[0], /açık değil/);
+});
+
+test("panelde mikrofon düğmesi var, kayıt WAV olarak gider", async () => {
+  const { PANEL_HTML } = await import("../src/panel_page.js");
+  assert.match(PANEL_HTML, /id="mic"/);
+  assert.match(PANEL_HTML, /"\/panel\/voice"/);
+  assert.match(PANEL_HTML, /str\(8, "WAVE"\)/);
 });

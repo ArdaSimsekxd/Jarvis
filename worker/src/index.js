@@ -144,9 +144,20 @@ async function telegramFile(env, fileId, maxBytes) {
 
 // Telegram'daki ses kaydını indirip yazıya çevirir.
 async function transcribe(env, fileId) {
-  const bytes = await telegramFile(env, fileId, MAX_VOICE_BYTES);
+  return transcribeAudio(env, await telegramFile(env, fileId, MAX_VOICE_BYTES));
+}
+
+// Ses kaydını (Telegram sesli mesajı ya da panelin WAV kaydı) yazıya çevirir.
+async function transcribeAudio(env, bytes) {
   const out = await withTimeout(env.AI.run(SPEECH_MODEL, { audio: toBase64(bytes), language: "tr" }), AI_TIMEOUT_MS);
   return String(out?.text ?? "").trim();
+}
+
+// Paneldeki sesli komut: yazıya çevrilir, sohbet gibi cevaplanır.
+async function appVoice(env, c, bytes, ctx) {
+  const text = await transcribeAudio(env, bytes);
+  if (!text) return { text: "", replies: [] };
+  return { text, replies: await appChat(env, c, text, ctx) };
 }
 
 // Fotoğrafı yapay zekâya okutur: { desc, text }. Asıl model hata verirse yedek modelle bir kez daha dener.
@@ -602,6 +613,7 @@ export default {
         names: () => courseNames(c),
         menu: () => c.fetchMenu(),
         chat: (text) => appChat(env, c, text, ctx),
+        voice: env.AI ? (bytes) => appVoice(env, c, bytes, ctx) : null,
       };
       return (await handlePanel(request, c, src)) ?? new Response("yok", { status: 404 });
     }
