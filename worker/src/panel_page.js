@@ -1035,11 +1035,25 @@ input[type=date] { font: 500 16px var(--body); color: var(--text); background: r
   var CHAT = "jarvis-chat";
   var history = [];
   try { history = JSON.parse(localStorage.getItem(CHAT) || "[]"); } catch (e) { history = []; }
+  // Sohbet hep en son mesajda durur. Panel ilk açılışta gizli olduğu için (giriş ekranı) o anki kaydırma işe yaramaz;
+  // kutu görünür olunca, yazı tipleri yüklenince ve içerik büyüdükçe yeniden en alta inilir.
+  // Kullanıcı eski mesajları okumak için yukarı kaydırdıysa yerinden oynatılmaz.
+  var stick = true;
+  function toBottom() { var c = $("chatlog"); c.scrollTop = c.scrollHeight; }
+  function keepBottom() { if (stick) { toBottom(); requestAnimationFrame(toBottom); } }
+  $("chatlog").addEventListener("scroll", function () {
+    var c = $("chatlog");
+    if (c.clientHeight) stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
+  }, { passive: true });
+  if (window.ResizeObserver) new ResizeObserver(keepBottom).observe($("chatlog"));
+  if (window.MutationObserver) new MutationObserver(keepBottom).observe($("chatlog"), { childList: true, subtree: true });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(keepBottom);
   function bubble(who, html, cls) {
     var m = el("div", "msg " + who + (cls ? " " + cls : ""));
     if (who === "bot") m.appendChild(rich(html)); else m.textContent = html;
     $("chatlog").appendChild(m);
-    $("chatlog").scrollTop = $("chatlog").scrollHeight;
+    if (who === "me") stick = true;   // yeni soru sorunca her zaman en alta
+    keepBottom();
     return m;
   }
   function remember(who, text) {
@@ -1048,6 +1062,7 @@ input[type=date] { font: 500 16px var(--body); color: var(--text); background: r
     try { localStorage.setItem(CHAT, JSON.stringify(history)); } catch (e) {}
   }
   function drawChat() {
+    stick = true;
     $("chatlog").textContent = "";
     history.forEach(function (h) { bubble(h.w, h.t); });
     if (!history.length) bubble("bot", "Merhaba efendim. Ne yapmamı istersin? Örnek: <i>bu hafta beni ne bekliyor?</i>, <i>kahveye 80 TL verdim</i>, <i>bilgisayarı kilitle</i>");
