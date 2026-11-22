@@ -12,7 +12,10 @@ const NAME_TTL = 7 * 24 * 3600;   // durak adları bir hafta saklanır
 const NEAR_KM = 0.8;    // konuma bundan uzak durak "yakın" sayılmaz (yürüme mesafesi)
 export const INDEX_KEY = "otobus:duraklar";   // bilinen duraklar ve konumları (hat hat öğrenilir)
 const LINE_TTL_MS = 14 * 24 * 3600 * 1000;    // bir hattın durakları iki haftada bir yenilenir
-const LINES_PER_RUN = 4;                      // bir istekte en fazla bu kadar hat öğrenilir (siteyi yormamak için)
+const LINES_PER_ASK = 10;                     // bir durak sorulunca en fazla bu kadar hattı hemen öğrenir
+const CRAWL_LINES = 2;                        // arka planda (10 dakikada bir) öğrenilen hat sayısı
+const CRAWL_PROBES = 3;                       // öğrenilecek hat kalmadıysa yoklanan durak sayısı (yeni hat bulmak için)
+const FAR_KM = 0.2;                           // en yakın bilinen durak bundan uzaksa "dibindeki durağı tanımıyor olabilirim" denir
 const HEADERS = {
   Accept: "application/json, text/javascript, */*; q=0.01",
   "Content-Type": "application/json; charset=utf-8",
@@ -164,33 +167,69 @@ async function fetchLineStops(ctx, code, direction) {
   return parseMapStops(await res.json());
 }
 
+// KV "otobus:duraklar": { stops: { no: [ad, enlem, boylam] }, lines: { hat: öğrenildiği an }, queue: [hat], probed: { no: an } }
 export async function loadIndex(kv) {
   try {
     const data = JSON.parse((await kv.get(INDEX_KEY)) ?? "null");
-    return { stops: data?.stops ?? {}, lines: data?.lines ?? {} };
+    return { stops: data?.stops ?? {}, lines: data?.lines ?? {}, queue: Array.isArray(data?.queue) ? data.queue : [], probed: data?.probed ?? {} };
   } catch {
-    return { stops: {}, lines: {} };
+    return { stops: {}, lines: {}, queue: [], probed: {} };
   }
 }
 
-// Verilen hatların duraklarını öğrenir (yalnızca bilinmeyen ya da eskimiş olanları, bir seferde birkaçını).
-export async function learnLines(ctx, codes, index = null) {
+const fresh = (idx, code, now) => now - (idx.lines[code] ?? 0) < LINE_TTL_MS;
+const okCode = (c) => /^[\w-]{1,8}$/.test(c);
+
+// Verilen hatların duraklarını öğrenir (yalnızca bilinmeyen ya da eskimiş olanları). Sığmayanlar sıraya girer,
+// arka plandaki tarama (crawlBus) onları sonra öğrenir.
+export async function learnLines(ctx, codes, index = null, max = LINES_PER_ASK) {
   const idx = index ?? (await loadIndex(ctx.kv));
-  const todo = [...new Set(codes.map(String))].filter((c) => /^[\w-]{1,8}$/.test(c) && !(ctx.now - (idx.lines[c] ?? 0) < LINE_TTL_MS)).slice(0, LINES_PER_RUN);
-  let learned = 0;
+  const wanted = [...new Set(codes.map(String))].filter((c) => okCode(c) && !fresh(idx, c, ctx.now));
+  const todo = wanted.slice(0, max);
+  let changed = false;
   for (const code of todo) {
     try {
       for (const dir of [1, 2]) {
         for (const st of await fetchLineStops(ctx, code, dir)) idx.stops[st.id] = [st.name, Math.round(st.lat * 1e5) / 1e5, Math.round(st.lon * 1e5) / 1e5];
       }
       idx.lines[code] = ctx.now;
-      learned += 1;
+      changed = true;
     } catch (err) {
       console.error("hat durakları alınamadı", err?.message);
     }
   }
-  if (learned) await ctx.kv.put(INDEX_KEY, JSON.stringify(idx));
+  const queue = [...new Set([...idx.queue, ...wanted])].filter((c) => !fresh(idx, c, ctx.now));
+  if (queue.join() !== idx.queue.join()) { idx.queue = queue; changed = true; }
+  if (changed) await ctx.kv.put(INDEX_KEY, JSON.stringify(idx));
   return idx;
+}
+
+// Arka plan taraması (10 dakikada bir, birkaç istek): sıradaki hatları öğrenir; sıra boşsa yoklanmamış
+// duraklara uğrayan hatlara bakar. Böylece Jarvis zamanla şehrin bütün duraklarını tanır, sonra durur.
+export async function crawlBus(ctx) {
+  if (trParts(ctx.now).mm % 10 !== 0) return { skipped: true };
+  const idx = await loadIndex(ctx.kv);
+  for (const [code, at] of Object.entries(idx.lines)) if (ctx.now - at >= LINE_TTL_MS && !idx.queue.includes(code)) idx.queue.push(code);
+  if (!Object.keys(idx.lines).length && !idx.queue.length) {
+    for (const s of (await loadStops(ctx.kv)).slice(0, 3)) idx.queue.push(...(await fetchArrivals(ctx, s.id).catch(() => [])).filter((x) => x.type === "bus").map((x) => x.code));
+  }
+  if (idx.queue.length) {
+    await learnLines(ctx, idx.queue, idx, CRAWL_LINES);
+    return { learned: true, queue: idx.queue.length };
+  }
+  const todo = Object.keys(idx.stops).filter((id) => !idx.probed[id]).slice(0, CRAWL_PROBES);
+  if (!todo.length) return { done: true };
+  for (const id of todo) {
+    try {
+      const codes = (await fetchArrivals(ctx, id)).filter((x) => x.type === "bus").map((x) => x.code);
+      idx.queue.push(...codes.filter((c) => okCode(c) && !fresh(idx, c, ctx.now) && !idx.queue.includes(c)));
+      idx.probed[id] = ctx.now;
+    } catch (err) {
+      console.error("durak yoklanamadı", err?.message);
+    }
+  }
+  await ctx.kv.put(INDEX_KEY, JSON.stringify(idx));
+  return { probed: todo.length, queue: idx.queue.length };
 }
 
 // Konuma en yakın duraklar, en fazla iki tane (yolun iki yakası)
@@ -238,7 +277,7 @@ async function arrivalsText(ctx, stops, learn = true) {
       out.push(`🚌 <b>${esc(stop.label || stop.name || stop.id)}</b>: Kayseri Ulaşım'a şu an ulaşamadım, birazdan yeniden dener misin?`);
     }
   }
-  if (learn && codes.length) await learnLines(ctx, codes).catch((err) => console.error("hatlar öğrenilemedi", err?.message));
+  if (learn && codes.length) await learnLines(ctx, codes, null, stops.length > 1 ? 4 : LINES_PER_ASK).catch((err) => console.error("hatlar öğrenilemedi", err?.message));
   return out.join("\n\n");
 }
 
@@ -266,7 +305,9 @@ export async function busLocation(loc, ctx) {
       "Yakınındaki durağın numarasını (tabelada yazar) bir kez sorarsan, örneğin <code>/otobus 7548</code>, o durağa uğrayan hatların bütün duraklarını öğrenirim. Bir dahaki sefere konumundan bulurum.",
     ].join("\n");
   }
-  return arrivalsText(ctx, near.map((s) => ({ id: s.id, label: "", name: s.name, km: s.km })));
+  const text = await arrivalsText(ctx, near.map((s) => ({ id: s.id, label: "", name: s.name, km: s.km })));
+  if (near[0].km <= FAR_KM) return text;
+  return `${text}\n\n📍 Bildiğim en yakın durak ${Math.round(near[0].km * 1000 / 10) * 10}\u00a0m uzakta. Yanındaki durağı henüz tanımıyor olabilirim: tabeladaki numarayı yaz (örneğin <code>/otobus 467</code>), bir dahakine konumundan bulurum. Şehrin duraklarını arka planda da yavaş yavaş öğreniyorum.`;
 }
 
 // "/otobus test 7548": site değişti mi diye ham cevapların başını gösterir (yalnızca herkese açık durak verisi)
