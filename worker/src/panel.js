@@ -350,9 +350,12 @@ export async function handlePanel(request, ctx, src) {
     if (!(await authorized(request, ctx.kv))) return json({ error: "yetkisiz" }, 401);
     const body = await request.json().catch(() => ({}));
     const text = String(body.text ?? "").trim().slice(0, 1000);
-    if (!text) return json({ replies: [] });
+    // Konum (🚌 düğmesi): yalnızca o anki soru için kullanılır, saklanmaz
+    const lat = Number(body.location?.lat), lon = Number(body.location?.lon);
+    const location = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: lat, longitude: lon } : null;
+    if (!text && !location) return json({ replies: [] });
     try {
-      return json({ replies: await src.chat(text) });
+      return json({ replies: await src.chat(text, location) });
     } catch (err) {
       console.error("uygulama sohbeti cevaplanamadı", err?.message);
       return json({ replies: ["Şu an cevap veremedim, biraz sonra yeniden dener misin?"] });
