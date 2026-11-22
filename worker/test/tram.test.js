@@ -4,7 +4,7 @@ import { busLocation } from "../src/bus.js";
 import { toSteps } from "../src/brain.js";
 import { trToMs } from "../src/logic.js";
 import {
-  ARRIVAL_VARIANTS, TRAM_KEY, fetchTramArrivals, cmdTramvay, crawlTram, findTramStops, formatTram, loadTramIndex, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
+  ARRIVAL_VARIANTS, TRAM_KEY, errorHint, fetchTramArrivals, cmdTramvay, crawlTram, findTramStops, formatTram, loadTramIndex, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
 } from "../src/tram.js";
 
 const NOW = trToMs(2026, 11, 22, 20, 55);
@@ -131,19 +131,20 @@ test("tramvay: panel düğmeleri ayrı (🚌 yalnız otobüs, 🚋 yalnız tramv
 test("tramvay: varış isteği çerezle gider; çalışmayan biçimde sıradaki denenir ve hatırlanır", async () => {
   const ctx = fakeCtx();
   const plain = ctx.webFetch;
-  ctx.webFetch = async (url, init = {}) => (url.startsWith(ARR) && init.body === undefined && init.method === "POST"
+  ctx.webFetch = async (url, init = {}) => (url.startsWith(ARR) && init.body !== "{}"
     ? (ctx.calls.push({ url, init }), { ok: false, status: 500, json: async () => { throw new Error("html"); }, text: async () => "<html>" })
     : plain(url, init));
   const list = await fetchTramArrivals(ctx, ILDEM1);
   assert.equal(list[0].code, "T1");
   const tries = ctx.calls.filter((c) => c.url === ARR + ILDEM1);
-  assert.equal(tries.length, 2);
+  assert.equal(tries.length, 3);
   assert.equal(tries[0].init.headers.Cookie, "dil=tr; HatTuru=2");
-  assert.equal(tries[1].init.body, "{}");
-  assert.equal(await ctx.cache.get("tramvay:bicim"), 1);
+  assert.equal(tries[0].init.headers["Accept-Language"], "tr-TR,tr;q=0.9");
+  assert.equal(tries[2].init.body, "{}");
+  assert.equal(await ctx.cache.get("tramvay:bicim"), 2);
   await fetchTramArrivals(ctx, ILDEM5);
   assert.equal(ctx.calls.filter((c) => c.url === ARR + ILDEM5).length, 1, "çalışan biçim doğrudan kullanılır");
-  assert.equal(ARRIVAL_VARIANTS.length, 3);
+  assert.equal(ARRIVAL_VARIANTS.length, 4);
   assert.ok(ARRIVAL_VARIANTS.every((v) => v.init.method === "POST"), "GET sayfa döndürüyor, denenmez");
 });
 
@@ -154,9 +155,9 @@ test("tramvay: her biçime 500 veren durak 'veri yok' sayılır ve 5 dakika yeni
     ? (ctx.calls.push({ url, init }), { ok: false, status: 500, json: async () => { throw new Error("html"); }, text: async () => "<html>" })
     : plain(url, init));
   await assert.rejects(fetchTramArrivals(ctx, CUMH), (e) => e.noData === true);
-  assert.equal(ctx.calls.length, 3);
+  assert.equal(ctx.calls.length, 4);
   await assert.rejects(fetchTramArrivals(ctx, CUMH), (e) => e.noData === true);
-  assert.equal(ctx.calls.length, 3, "ikinci sorguda siteye gidilmez");
+  assert.equal(ctx.calls.length, 4, "ikinci sorguda siteye gidilmez");
   const out = await cmdTramvay("cumhuriyet", ctx);
   assert.match(out, /varış bilgisi vermiyor/);
   assert.doesNotMatch(out, /ulaşamadım/);
@@ -170,9 +171,12 @@ test("tramvay: Makas Bölgesi konum aramasında atlanır; test komutu birkaç du
   assert.deepEqual(nearestTram(index, { lat: 38.7869, lon: 35.6258 }).map((s) => s.name), ["İldem5"]);
   const ctx = fakeCtx();
   const out = await cmdTramvay("test", ctx);
-  assert.match(out, /Varış · İldem5/);
-  assert.match(out, /Varış · DSI-Yeni Sanayi/);
-  const one = await cmdTramvay("test ildem1", ctx);
-  assert.match(one, /Varış · İldem1/);
-  assert.doesNotMatch(one, /Varış · İldem5/);
+  assert.match(out, /Varış · İldem1 · tarayıcı başlıkları/);
+  assert.match(out, /Varış · İldem1 · çerez \+ form/);
+  assert.doesNotMatch(out, /Varış · İldem5/);
+  const one = await cmdTramvay("test ildem5", ctx);
+  assert.match(one, /Varış · İldem5/);
+  assert.doesNotMatch(one, /Varış · İldem1/);
+  assert.equal(errorHint("<html><head><title>Hata Sayfası</title><script>var error=1;</script></head><body><p>Bir hata oluştu. Object reference not set to an instance of an object.</p></body></html>"),
+    "başlık: Hata Sayfası · ipucu: Bir hata oluştu");
 });

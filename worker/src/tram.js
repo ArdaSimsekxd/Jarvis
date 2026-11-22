@@ -31,7 +31,10 @@ export const TRAM_HELP = [
 // Site bazı duraklarda (ör. hat sonu ya da teknik duraklar) her biçime 500 veriyor: bu "veri yok" sayılır.
 const ARRIVAL_COOKIE = "dil=tr; HatTuru=2";
 const ARRIVAL_REFERER = `${BASE}/OtobusTramvayHatlariHatDetay/HatDetay/1/?HAT_TURU=TRAMVAY&&HAT_YON=ARRIVAL`;
+// Tarayıcının (Brave) gönderdiği ek başlıklar: dil ve aynı siteden gelen POST'un Origin'i.
+const BROWSER = { Accept: "*/*", "Accept-Language": "tr-TR,tr;q=0.9", Origin: BASE };
 export const ARRIVAL_VARIANTS = [
+  { label: "tarayıcı başlıkları", init: { method: "POST", headers: { ...HEADERS, ...BROWSER, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER }, body: "" } },
   { label: "çerez", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER } } },
   { label: "çerez + JSON", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/json; charset=utf-8" }, body: "{}" } },
   { label: "çerez + form", init: { method: "POST", headers: { ...HEADERS, Cookie: ARRIVAL_COOKIE, Referer: ARRIVAL_REFERER, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: "" } },
@@ -240,24 +243,35 @@ export function findTramStops(index, query) {
   return [];
 }
 
-// Test: harita + birkaç durağın varışı (ilk istek biçimiyle). "/tramvay test ildem" yalnız o durağı dener.
-function testStops(index, query) {
-  if (query) return findTramStops(index, query).slice(0, 2);
+// Hata sayfasından kısa bir ipucu: başlık ve "hata/exception" geçen ilk cümle (sitenin yazısı, yalnızca gösterilir).
+export function errorHint(html) {
+  const text = String(html ?? "");
+  const title = /<title[^>]*>([\s\S]{0,200}?)<\/title>/i.exec(text)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+  const bare = text.replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ");
+  const m = /[^.!?]{0,60}(hata|error|exception|istisna|bulunamad|object reference|null)[^.!?]{0,100}/i.exec(bare);
+  return [title && `başlık: ${title}`, m && `ipucu: ${m[0].trim()}`].filter(Boolean).join(" · ").slice(0, 260);
+}
+
+// Test: harita + bir durağın varışı her istek biçimiyle. "/tramvay test hunat" o durağı dener.
+function testStop(index, query) {
+  if (query) return findTramStops(index, query)[0] ?? null;
   const all = Object.entries(index.stops).map(([id, [name]]) => ({ id, name }));
-  const pick = [all.find((s) => /^[İi]ldem/.test(s.name)), all[Math.floor(all.length / 2)], all[all.length - 1]];
-  return pick.filter((s, i) => s && pick.findIndex((x) => x?.id === s.id) === i);
+  return all.find((s) => s.name === "İldem1") ?? all.find((s) => /^[İi]ldem/.test(s.name)) ?? all[0] ?? null;
 }
 
 async function tramTest(ctx, index, query) {
+  const stop = testStop(index, query);
+  if (query && !stop) return `"${esc(query)}" adında tramvay durağı bulamadım.`;
   const probes = [["Durak haritası (T1)", tramMapUrl("T1", 2), { headers: HEADERS }]];
-  for (const s of testStops(index, query)) probes.push([`Varış · ${esc(s.name)}`, tramArrivalsUrl(s.id), ARRIVAL_VARIANTS[0].init]);
-  if (query && probes.length === 1) return `"${esc(query)}" adında tramvay durağı bulamadım.`;
+  if (stop) for (const v of ARRIVAL_VARIANTS) probes.push([`Varış · ${esc(stop.name)} · ${v.label}`, tramArrivalsUrl(stop.id), v.init]);
   const out = ["🔧 <b>Tramvay testi</b>"];
   for (const [label, url, init] of probes) {
     try {
       const res = await ctx.webFetch(url, init);
       const body = await res.text();
-      out.push(`<b>${label}</b>: HTTP ${res.status} · ${body.length} karakter\n<code>${esc(body.slice(0, 120))}</code>`);
+      const html = /^\s*</.test(body);
+      const hint = html ? errorHint(body) : "";
+      out.push(`<b>${label}</b>: HTTP ${res.status} · ${body.length} karakter\n<code>${esc(html ? hint || "(HTML sayfa)" : body.slice(0, 120))}</code>`);
     } catch (err) {
       out.push(`<b>${label}</b>: ulaşılamadı (${esc(String(err?.message ?? err).slice(0, 80))})`);
     }
