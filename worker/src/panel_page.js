@@ -99,6 +99,14 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .empty { color: var(--muted); font-style: italic; }
 .mini { white-space: nowrap; flex: 0 0 auto; font: 700 10px var(--head); letter-spacing: .14em; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(63, 216, 255, .45); background: transparent; color: var(--cyan); cursor: pointer; }
 .mini.warn { color: var(--red); border-color: var(--red); }
+.akform { display: flex; gap: 8px; margin-bottom: 12px; }
+.akform input { min-width: 0; flex: 1 1 auto; }
+.ak { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(63, 216, 255, .08); }
+.ak:last-child { border-bottom: 0; }
+.ak .tick { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 15px; line-height: 1; }
+.ak .txt { min-width: 0; overflow-wrap: anywhere; flex: 1 1 auto; }
+.ak.done .txt { text-decoration: line-through; opacity: .45; }
+.ak .age { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
 .rem { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .subhead { margin: 14px 0 8px; font: 600 12px var(--head); letter-spacing: .22em; color: var(--muted); }
 
@@ -208,6 +216,14 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
           <button type="submit" aria-label="Gönder"><span class="sendtxt">Gönder</span><span class="sendico">➤</span></button>
         </form>
         <div class="toast" id="micState" aria-live="polite"></div>
+      </section>
+      <section class="card wide"><h2>AKLIMDA <span class="count" id="cAklimda">saati olmayan yapılacaklar</span></h2>
+        <form class="akform" id="akForm" autocomplete="off">
+          <input type="text" id="akInput" placeholder="Aklında kalsın: süt al, kitabı iade et…" maxlength="300" aria-label="Aklımda listesine ekle">
+          <button type="submit">EKLE</button>
+        </form>
+        <div class="toast" id="akState" aria-live="polite"></div>
+        <div id="aklimda"></div>
       </section>
       <section class="card"><h2>BUGÜN <span class="count" id="cLessons"></span></h2><div id="lessons"></div></section>
       <section class="card wide"><h2>ÖDEVLER <span class="count" id="cHomework"></span></h2><div id="homework"></div></section>
@@ -345,6 +361,47 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("cUpcoming").textContent = data.upcoming.length + " kayıt";
   }
 
+  // Aklımda: saati olmayan yapılacaklar. ✓'ye dokununca yapıldı sayılır ve listeden düşer.
+  function ago(ms) {
+    var d = Math.floor((Date.now() - ms) / 864e5);
+    return d <= 0 ? "bugün" : d === 1 ? "dün" : d + " gün önce";
+  }
+  function renderAklimda(data) {
+    var box = $("aklimda"), list = data.aklimda || [];
+    box.textContent = "";
+    $("cAklimda").textContent = list.length ? list.length + " madde" : "saati olmayan yapılacaklar";
+    if (!list.length) return empty(box, "Liste boş. Yukarıya yaz ya da Jarvis'e söyle: \"aklımda kalsın, kitabı iade edeceğim\"");
+    list.forEach(function (it) {
+      var line = el("div", "ak");
+      var b = el("button", "tick", "✓");
+      b.type = "button"; b.title = "Yapıldı"; b.setAttribute("aria-label", "Yapıldı: " + it.text);
+      b.addEventListener("click", function () {
+        b.disabled = true; line.classList.add("done");
+        fetch("/panel/aklimda", { method: "DELETE", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ id: it.id }) })
+          .then(function (res) { if (!res.ok && res.status !== 404) throw new Error("http"); setTimeout(load, 500); })
+          .catch(function () { b.disabled = false; line.classList.remove("done"); $("akState").textContent = "Jarvis'e ulaşılamadı, yeniden dener misin?"; });
+      });
+      line.appendChild(b);
+      line.appendChild(el("span", "txt", it.text));
+      line.appendChild(el("span", "age", ago(it.at)));
+      box.appendChild(line);
+    });
+  }
+  $("akForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var input = $("akInput"), text = input.value.trim();
+    if (!text) return;
+    input.disabled = true; $("akState").textContent = "";
+    fetch("/panel/aklimda", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ text: text }) })
+      .then(function (res) { return res.json().then(function (r) { return { ok: res.ok, r: r }; }); })
+      .then(function (x) {
+        if (!x.ok) { $("akState").textContent = x.r.error || "Eklenemedi."; return; }
+        input.value = ""; load();
+      })
+      .catch(function () { $("akState").textContent = "Jarvis'e ulaşılamadı, yeniden dener misin?"; })
+      .then(function () { input.disabled = false; input.focus(); });
+  });
+
   // Bütün bekleyen hatırlatmalar. SİL'e iki kez dokununca silinir (yanlışlıkla silinmesin).
   function renderReminders(data) {
     var box = $("reminders"), ul = el("ul", "list"), list = data.reminders || [];
@@ -479,7 +536,7 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
     $("greet").textContent = data.greeting + ".";
     $("dotCanvas").className = "dot " + (data.canvas ? "on" : "off");
     var left = renderLessons(data);
-    renderHomework(data); renderUpcoming(data); renderReminders(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
+    renderHomework(data); renderUpcoming(data); renderReminders(data); renderAklimda(data); renderMoney(data); renderMails(data); renderMenu(data); renderPc(data); renderFiles(data);
     var late = data.homework.filter(function (h) { return h.overdue; }).length;
     var soon = data.homework.filter(function (h) { return !h.overdue && h.due - Date.now() < 3 * 864e5; }).length;
     var parts = [];

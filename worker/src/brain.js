@@ -31,7 +31,7 @@ const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
   "harcama_ekle", "harcamalar", "harcama_sil", "butce",
-  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus",
+  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus", "aklimda_ekle", "aklimda_liste", "aklimda_bitti",
 ];
 
 // Jarvis kişiliği: yapay zekânın yazdığı cevaplar Iron Man'deki asistan gibi kibar ve hafif esprili olur.
@@ -130,7 +130,10 @@ Yapabildiğin işlemler:
 - {"ad":"fitness_liste"} fitness istekleri ve alınan randevular
 - {"ad":"fitness_iptal","tarih":"YYYY-AA-GG"} o günün fitness randevusunu iptal eder
 - {"ad":"fitness_istek_sil","tarih":"YYYY-AA-GG","haftalik":"evet"} bir fitness isteğini tamamen kaldırır (ör. "artık salıları gitmeyeceğim")
-- {"ad":"hafiza_kaydet","metin":"kaydedilecek bilgi"} kullanıcının sonra hatırlamak istediği bir bilgiyi, notu ya da bağlantıyı hafızaya kaydeder ("kaydet", "not al", "aklında tut", "unutma" gibi). metin'e bilgiyi kullanıcının kendi kelimeleriyle, kısaltmadan ve eksiksiz yaz; "bunu kaydet" gibi önceki mesaja işaret ediyorsa o bilgiyi önceki konuşmadan alıp yaz. Belli bir saatte haber verilmesi isteniyorsa bu değil, hatirlatma_ekle'dir.
+- {"ad":"aklimda_ekle","metin":"yapılacak iş"} saati olmayan, unutulmaması gereken bir işi "Aklımda" listesine ekler ("aklımda kalsın, süt alacağım", "yapılacaklara ekle: hocaya mail at", "kitabı iade etmeyi unutmayayım", "bir ara saç kestireceğim"). metin kısa ve emir kipinde olsun ("Süt al", "Kitabı kütüphaneye iade et"). Saat ya da gün verildiyse bu değil, hatirlatma_ekle'dir.
+- {"ad":"aklimda_liste"} "Aklımda" listesini gösterir ("aklımda ne vardı?", "yapılacaklarım ne?", "listemde ne var?").
+- {"ad":"aklimda_bitti","metin":"maddenin numarası ya da içindeki bir sözcük"} yapılan işi listeden çıkarır ("süt aldım", "2 bitti", "kitabı iade ettim" -> metin "kitab"). Sözcüğü maddede geçtiği biçimde, eksiz yaz.
+- {"ad":"hafiza_kaydet","metin":"kaydedilecek bilgi"} kullanıcının sonra hatırlamak istediği bir bilgiyi, notu ya da bağlantıyı hafızaya kaydeder ("kaydet", "not al", "bunu bil" gibi; yapılacak bir iş değil, bilgi: "dolabım 45 numara", "Wi-Fi şifresi ..."). metin'e bilgiyi kullanıcının kendi kelimeleriyle, kısaltmadan ve eksiksiz yaz; "bunu kaydet" gibi önceki mesaja işaret ediyorsa o bilgiyi önceki konuşmadan alıp yaz. Belli bir saatte haber verilmesi isteniyorsa bu değil, hatirlatma_ekle'dir.
 - {"ad":"hafiza_ara","metin":"konuyu anlatan 2-5 anahtar kelime"} kullanıcının daha önce kaydettiği notlarda, bağlantılarda ve fotoğraflarda arar. Kullanıcı daha önce kaydettiği ya da söylediği bir şeyi, kişisel bir bilgiyi (bir kişinin doğum günü, bir site, bir adres, bir fotoğraf) sorarsa kullan. Anahtar kelimelere eş anlamlılarını da ekle.
 - {"ad":"hafiza_sil","metin":"notta geçen kelimeler"} hafızadan bir notu siler
 - {"ad":"tarihler"} mail ve Canvas duyurularından bulunan yaklaşan tarihler (sınav, son başvuru, etkinlik)
@@ -152,7 +155,7 @@ Kurallar:
 - Mesaj bu işlemlerle karşılanabiliyorsa islemler'e yaz ve cevap'ı boş bırak. Birden çok işlem yazabilirsin.
 - "Bu hafta beni ne bekliyor?" gibi genel sorularda gerekli hepsini yaz: dersler (gun_sayisi 7), odevler, tarihler, hatirlatmalar, fitness_liste. Mail sorulmadıysa mailler'i ekleme.
 - Kullanıcı veriden belirli bir şey soruyorsa (ör. "yarın ilk dersim kaçta?", "en yakın ödevim hangisi?") yorum'a "evet" yaz. Listeyi olduğu gibi göstermek yeterliyse yorum'u boş bırak.
-- Gerekli bilgi eksikse (ör. hatırlatmanın saati) işlem yazma; cevap'ta tek cümleyle sor.
+- Gerekli bilgi eksikse işlem yazma; cevap'ta tek cümleyle sor. Ama bir şeyin hatırlatılması istenip saat ya da gün söylenmediyse saat sorma: aklimda_ekle yaz.
 - İşlem gerektirmeyen sohbet ve genel bilgi sorularında islemler boş kalır; cevap'a kısa, samimi bir Türkçe cevap yaz. Biçimlendirme işareti (*, #, _) kullanma.
 - Yalnızca bir bağlantıdan (ya da bağlantı ve kısa bir açıklamadan) oluşan mesajlar hafiza_kaydet'tir. Bağlantıyla birlikte özet ya da sayfa hakkında bir soru isteniyorsa sayfa_ozetle'dir.
 - Kullanıcının kendi bilgileri (ders, ödev, mail, hafıza, harcama) için internete bakma; onlar için yukarıdaki işlemleri kullan. Kendi bilginle kesin cevaplayabileceğin, zamanla değişmeyen genel sorularda (ör. "fotosentez nedir?") internete gerek yok, cevap'a yaz.
@@ -342,6 +345,14 @@ export function toSteps(actions, nowMs, message = "") {
       const stop = (a.metin ?? "").replace(/['’]\S*/g, "").replace(/[^\p{L}\d ]/gu, " ").split(/\s+/)
         .filter((w) => w && !/^(durak|durag)/.test(plain(w))).join(" ").slice(0, 30);
       steps.push({ type: "private", label: "otobüs", command: "otobus", args: stop });
+    } else if (a.ad === "aklimda_ekle") {
+      const text = (a.metin ?? "").replace(/\s+/g, " ").trim();
+      if (text) steps.push({ type: "run", command: "aklimda", args: `ekle ${text}` });
+    } else if (a.ad === "aklimda_liste") {
+      steps.push({ type: "run", command: "aklimda", args: "" });
+    } else if (a.ad === "aklimda_bitti") {
+      const word = (a.metin ?? "").replace(/\s+/g, " ").trim();
+      if (word) steps.push({ type: "run", command: "aklimda", args: `bitti ${word}` });
     } else if (a.ad === "kisilik") {
       steps.push({ type: "run", command: "kisilik", args: /kapa|dur|normal|d[uü]z/i.test(a.metin ?? "") ? "kapat" : "ac" });
     } else if (a.ad === "telefonu_bul") {
