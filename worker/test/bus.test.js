@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  BASE, BUS_KEY, INDEX_KEY, busLocation, cmdOtobus, formatStop, groupByLine, learnLines, nearestStops, parseArrivals, parseMapStops,
+  BASE, BUS_KEY, INDEX_KEY, busLocation, crawlBus, cmdOtobus, formatStop, groupByLine, learnLines, nearestStops, parseArrivals, parseMapStops,
   parseStops, titleTr,
 } from "../src/bus.js";
 import { toSteps } from "../src/brain.js";
@@ -104,14 +104,15 @@ test("otobüs: durak numarasıyla sorulur, adı siteden gelir, hatların durakla
   assert.equal(ctx.calls.find((c) => c.url.startsWith(SEARCH)).init.body, JSON.stringify({ Search: "7548" }));
   const maps = ctx.calls.filter((c) => c.url.startsWith(MAP)).map((c) => c.url.slice(MAP.length));
   assert.deepEqual(maps.slice(0, 2), ["?lineId=448&directions=1", "?lineId=448&directions=2"]);
-  assert.equal(maps.length, 8, "bir seferde en fazla 4 hat");
+  assert.equal(maps.length, 12, "duraktaki 6 hattın hepsi hemen öğrenilir");
   const index = JSON.parse(ctx.kv.values.get(INDEX_KEY));
   assert.deepEqual(index.stops["7548"], ["Erkilet Blv 5 AGÜ", 38.74069, 35.47643]);
-  assert.deepEqual(Object.keys(index.lines).sort(), ["15", "206", "448", "485"]);
-  // İkinci soru kalan hatları öğrenir, bilinenleri yeniden istemez
+  assert.deepEqual(Object.keys(index.lines).sort(), ["15", "206", "441", "448", "449", "485"]);
+  assert.deepEqual(index.queue, []);
+  // İkinci soru bilinen hatları yeniden istemez
   const again = fakeCtx({ kv: ctx.kv });
   await cmdOtobus("7548", again);
-  assert.deepEqual(again.calls.filter((c) => c.url.startsWith(MAP)).map((c) => c.url.match(/lineId=(\w+)/)[1]), ["449", "449", "441", "441"]);
+  assert.equal(again.calls.filter((c) => c.url.startsWith(MAP)).length, 0);
 });
 
 test("otobüs: kaydet, adla sor, sil", async () => {
@@ -177,4 +178,46 @@ test("otobüs: Telegram konumu ve yapay zekâ adımı", async () => {
 
   const steps = toSteps([{ ad: "otobus", metin: "okul durağı" }, { ad: "otobus", metin: "7548'e" }, { ad: "otobus", metin: "" }], {});
   assert.deepEqual(steps.map((s) => [s.type, s.command, s.args]), [["private", "otobus", "okul"], ["private", "otobus", "7548"], ["private", "otobus", ""]]);
+});
+
+test("otobüs: uzaktaki bilinen durakta not düşülür", async () => {
+  const kv = fakeKv({ [INDEX_KEY]: JSON.stringify({ stops: { 7548: ["Erkilet Blv 5 AGÜ", 38.74069, 35.47643] }, lines: { 448: NOW, 15: NOW, 206: NOW, 485: NOW, 449: NOW, 441: NOW } }) });
+  const text = await busLocation({ latitude: AGU.lat + 0.005, longitude: AGU.lon }, fakeCtx({ kv }));
+  assert.match(text, /560\u00a0m uzakta/);
+  assert.match(text, /Bildiğim en yakın durak 560\u00a0m uzakta\. Yanındaki durağı henüz tanımıyor olabilirim/);
+});
+
+test("otobüs: arka plan taraması sıradaki hatları öğrenir, sonra durakları yoklar, bitince durur", async () => {
+  const at = (mm) => trToMs(2026, 11, 22, 14, mm);
+  const kv = fakeKv({ [BUS_KEY]: JSON.stringify({ stops: [{ id: "7548", label: "okul" }] }) });
+  const run = async (mm, routes) => { const c = fakeCtx({ kv, routes }); c.now = at(mm); return [await crawlBus(c), c.calls]; };
+
+  const [skip, none] = await run(2);
+  assert.deepEqual(skip, { skipped: true });
+  assert.equal(none.length, 0, "10 dakikada bir çalışır");
+
+  // Boş başlangıç: kayıtlı durağın hatları sıraya girer, ikisi öğrenilir
+  let [r, calls] = await run(10);
+  assert.deepEqual(r, { learned: true, queue: 4 });
+  assert.equal(calls.filter((c) => c.url.startsWith(MAP)).length, 4);
+  [r] = await run(20);
+  assert.deepEqual(r, { learned: true, queue: 2 });
+  [r] = await run(30);
+  assert.deepEqual(r, { learned: true, queue: 0 });
+
+  // Sıra boş: bilinen duraklar yoklanır; yeni bir hat (99) bulunursa sıraya girer
+  const arrivals = (url) => ({ status: 200, body: url.endsWith("=449") ? [{ line: { code: "99", name: "YENİ", type: "bus" }, timeToStop: 3 }] : ARRIVALS });
+  [r, calls] = await run(40, { [ARRIVE]: arrivals });
+  assert.equal(r.probed, 3);
+  assert.equal(r.queue, 1);
+  assert.equal(calls.filter((c) => c.url.startsWith(ARRIVE)).length, 3);
+  [r] = await run(50, { [ARRIVE]: arrivals });
+  assert.deepEqual(r, { learned: true, queue: 0 });
+  assert.ok(JSON.parse(kv.values.get(INDEX_KEY)).lines["99"], "yeni hat öğrenildi");
+  // Bütün duraklar yoklanınca istek atmadan durur
+  let guard = 0;
+  while (!(r.done) && guard++ < 10) [r] = await run(0, { [ARRIVE]: arrivals });
+  assert.deepEqual(r, { done: true });
+  const [, quiet] = await run(0, { [ARRIVE]: arrivals });
+  assert.equal(quiet.length, 0);
 });

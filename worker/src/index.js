@@ -13,7 +13,7 @@ import { cmdBul, cmdPanel, handlePanel, plainText } from "./panel.js";
 import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
 import { cmdEczane } from "./pharmacy.js";
-import { busLocation, cmdOtobus } from "./bus.js";
+import { busLocation, cmdOtobus, crawlBus } from "./bus.js";
 import { cmdAklimda } from "./aklimda.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
@@ -669,6 +669,7 @@ export default {
       monthlyReport(c).catch((err) => console.error("harcama özeti gönderilemedi", err?.message)),
       checkQuakes(c).catch((err) => console.error("deprem kontrolü çalışmadı", err?.message)),
       checkCargo(c).catch((err) => console.error("kargo kontrolü çalışmadı", err?.message)),
+      crawlBus(c).catch((err) => console.error("durak taraması çalışmadı", err?.message)),
     ]).then(() => pushToApp(env, said)));
   },
 };
