@@ -161,38 +161,78 @@ function noData() {
 
 const metres = (km) => (km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(1)} km`);
 
-export function formatTram(stop, arrivals, nowMs) {
-  const p = trParts(nowMs);
-  const time = `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}`;
-  const far = Number.isFinite(stop.km) ? ` · ${metres(stop.km)} uzakta` : "";
-  const head = `🚋 <b>${esc(stop.name)}</b> tramvay durağı · ${time}${far}`;
-  if (!arrivals.length) return `${head}\nŞu an bu durağa yaklaşan tramvay görünmüyor.`;
+// "İldem - Organize Sanayi" → { from: "İldem", to: "Organize Sanayi" }: tramvayın nereden gelip nereye gittiği
+export function tramRoute(name) {
+  const parts = String(name ?? "").split(/\s+-\s+/).map((x) => x.trim()).filter(Boolean);
+  return parts.length > 1 ? { from: parts.slice(0, -1).join(" - "), to: parts[parts.length - 1] } : { from: "", to: parts[0] ?? "" };
+}
+
+const NO_DATA_TEXT = "Kayseri Ulaşım bu durak için şu an varış bilgisi vermiyor (hat sonu ya da sefer dışı olabilir). Bir sonraki durağı dener misin?";
+const UNREACHABLE_TEXT = "Kayseri Ulaşım'a şu an ulaşamadım, birazdan yeniden dener misin?";
+
+// Bir peronun satırları ve o perondan kalkan tramvayların gittiği yönler
+function platform(arrivals) {
   const lines = new Map();
   for (const a of arrivals) {
     const k = `${a.code}|${a.name}`;
     if (!lines.has(k)) lines.set(k, { ...a, times: [] });
     lines.get(k).times.push((a.live ? "" : "~") + (a.min <= 0 ? "geliyor" : `${a.min} dk`));
   }
-  const rows = [...lines.values()].slice(0, 6).map((l) => `<b>${esc(l.code)}</b> ${esc(l.name)} · ${l.times.slice(0, 3).join(", ")}`);
-  if (arrivals.some((a) => !a.live)) rows.push("<i>~ tarifeye göre</i>");
-  return [head, ...rows].join("\n");
+  const list = [...lines.values()].slice(0, 6);
+  const rows = list.map((l) => {
+    const r = tramRoute(l.name);
+    return `<b>${esc(l.code)}</b> ${r.from ? `${esc(r.from)} ` : ""}→ <b>${esc(r.to)}</b> · ${l.times.slice(0, 3).join(", ")}`;
+  });
+  const dests = [...new Set(list.map((l) => tramRoute(l.name).to).filter(Boolean))].slice(0, 3);
+  return { rows, dir: dests.length ? `${dests.map(esc).join(" / ")} yönü` : "" };
+}
+
+// Bir durak (aynı adlı iki peronuyla birlikte). platforms: [{ km, arrivals } | { km, error }]
+// Her peron, oradan kalkan tramvayların gittiği yönle başlıklandırılır; böylece hangi perona gidileceği anlaşılır.
+export function formatStop(name, platforms, nowMs) {
+  const p = trParts(nowMs);
+  const time = `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}`;
+  const far = (km) => (Number.isFinite(km) ? ` · ${metres(km)} uzakta` : "");
+  const errText = (e) => (e?.noData ? NO_DATA_TEXT : UNREACHABLE_TEXT);
+  const anyPlan = platforms.some((x) => x.arrivals?.some((a) => !a.live));
+  if (platforms.length === 1) {
+    const [one] = platforms;
+    if (one.error) return `🚋 <b>${esc(name)}</b>: ${errText(one.error)}`;
+    const head = `🚋 <b>${esc(name)}</b> tramvay durağı · ${time}${far(one.km)}`;
+    if (!one.arrivals.length) return `${head}\nŞu an bu durağa yaklaşan tramvay görünmüyor.`;
+    const { rows, dir } = platform(one.arrivals);
+    return [head, ...(dir ? [`➡️ ${dir}`] : []), ...rows, ...(anyPlan ? ["<i>~ tarifeye göre</i>"] : [])].join("\n");
+  }
+  const parts = [`🚋 <b>${esc(name)}</b> tramvay durağı · ${time}`];
+  platforms.forEach((x, i) => {
+    const mark = i === 0 ? "➡️" : "⬅️";
+    if (x.error) return parts.push(`${mark} Bir peron${far(x.km)}: ${errText(x.error)}`);
+    if (!x.arrivals.length) return parts.push(`${mark} Bir peron${far(x.km)}: şu an yaklaşan tramvay yok.`);
+    const { rows, dir } = platform(x.arrivals);
+    parts.push([`${mark} <b>${dir || "Bir peron"}</b>${far(x.km)}`, ...rows].join("\n"));
+  });
+  parts.push(["<i>Gideceğin yön hangi başlıktaysa o perondan bin.</i>", ...(anyPlan ? ["<i>~ tarifeye göre</i>"] : [])].join("\n"));
+  return parts.join("\n\n");
+}
+
+export function formatTram(stop, arrivals, nowMs) {
+  return formatStop(stop.name, [{ km: stop.km, arrivals }], nowMs);
 }
 
 async function stopsText(ctx, stops) {
-  const out = [];
+  const groups = new Map();
   for (const s of stops) {
+    let entry;
     try {
-      out.push(formatTram(s, await fetchTramArrivals(ctx, s.id), ctx.now));
+      entry = { km: s.km, arrivals: await fetchTramArrivals(ctx, s.id) };
     } catch (err) {
-      if (err?.noData) {
-        out.push(`🚋 <b>${esc(s.name)}</b>: Kayseri Ulaşım bu durak için şu an varış bilgisi vermiyor (hat sonu ya da sefer dışı olabilir). Bir sonraki durağı dener misin?`);
-        continue;
-      }
-      console.error("tramvay bilgisi alınamadı", err?.message);
-      out.push(`🚋 <b>${esc(s.name)}</b>: Kayseri Ulaşım'a şu an ulaşamadım, birazdan yeniden dener misin?`);
+      if (!err?.noData) console.error("tramvay bilgisi alınamadı", err?.message);
+      entry = { km: s.km, error: err };
     }
+    if (!groups.has(s.name)) groups.set(s.name, []);
+    groups.get(s.name).push(entry);
   }
-  return out.join("\n\n");
+  return [...groups].map(([name, platforms]) => formatStop(name, platforms, ctx.now)).join("\n\n");
 }
 
 // Konuma en yakın tramvay durağı (ve varsa aynı adlı karşı peronu)
