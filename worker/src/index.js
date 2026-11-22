@@ -14,6 +14,7 @@ import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
 import { cmdEczane } from "./pharmacy.js";
 import { busLocation, cmdOtobus, crawlBus } from "./bus.js";
+import { cmdTramvay, crawlTram } from "./tram.js";
 import { cmdAklimda } from "./aklimda.js";
 import { MAX_ANI_BYTES, aniCaption, cmdAni, loadAni, saveAni, savedText } from "./ani.js";
 
@@ -352,6 +353,7 @@ async function runCommand(cmd, ctx) {
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
   if (["otobus", "otobüs", "durak", "otobusler"].includes(cmd.command)) return cmdOtobus(cmd.args, ctx);
+  if (["tramvay", "tram", "tramvaylar"].includes(cmd.command)) return cmdTramvay(cmd.args, ctx);
   if (["aklimda", "aklımda", "yapilacak", "yapilacaklar", "todo"].includes(cmd.command)) return cmdAklimda(cmd.args, ctx);
   if (["ani", "anı", "anilar", "anılar", "anidefteri"].includes(cmd.command)) return cmdAni(cmd.args, ctx);
   if (["kisilik", "kişilik", "jarvis"].includes(cmd.command)) return cmdKisilik(cmd.args, ctx);
@@ -690,6 +692,7 @@ export default {
       checkQuakes(c).catch((err) => console.error("deprem kontrolü çalışmadı", err?.message)),
       checkCargo(c).catch((err) => console.error("kargo kontrolü çalışmadı", err?.message)),
       crawlBus(c).catch((err) => console.error("durak taraması çalışmadı", err?.message)),
+      crawlTram(c).catch((err) => console.error("tramvay taraması çalışmadı", err?.message)),
     ]).then(() => pushToApp(env, said)));
   },
 };

@@ -174,7 +174,7 @@ test("otobüs: Telegram konumu ve yapay zekâ adımı", async () => {
   await handleMessage({ chat: { id: "1" }, location: { latitude: AGU.lat, longitude: AGU.lon } }, ctx);
   assert.equal(ctx.sent.length, 1);
   assert.match(ctx.sent[0], /Erkilet Blv 5 AGÜ/);
-  assert.equal(ctx.calls.filter((c) => c.url.startsWith(MAP)).length, 0, "bilinen hatlar yeniden istenmez");
+  assert.equal(ctx.calls.filter((c) => c.url.startsWith(MAP) && !/lineId=T\d/.test(c.url)).length, 0, "bilinen hatlar yeniden istenmez");
 
   const steps = toSteps([{ ad: "otobus", metin: "okul durağı" }, { ad: "otobus", metin: "7548'e" }, { ad: "otobus", metin: "" }], {});
   assert.deepEqual(steps.map((s) => [s.type, s.command, s.args]), [["private", "otobus", "okul"], ["private", "otobus", "7548"], ["private", "otobus", ""]]);

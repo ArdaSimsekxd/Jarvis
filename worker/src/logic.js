@@ -418,6 +418,7 @@ export const HELP = [
   "/deprem — son depremler; yakınında deprem olunca haber veririm (şehir ekle: <code>/deprem ekle İzmir</code>)",
   "/kargo 123456789012 kulaklık — kargoyu kaydet; takip bağlantısı verir, her sabah hatırlatırım (<code>/kargo</code> hepsi)",
   "/eczane — Kayseri'de bu gece nöbetçi eczaneler (ya da: <code>/eczane talas</code>, <code>/eczane hepsi</code>)",
+  "/tramvay ildem — tramvay kaç dakikada gelir (<code>/tramvay duraklar</code> bütün duraklar; konum gönderince yakındaki tramvay durağı da çıkar)",
   "/otobus 7548 — durağa yaklaşan otobüsler ve kaç dakikada gelecekleri (kaydet: <code>/otobus ekle 7548 okul</code>; ayrıntı: <code>/otobus yardım</code>)",
   "/bul — telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika çalar",
   "/pc — bilgisayarın (kilitle, uyku, ekran, kamera, konum, ses, uygulama aç; dosya: <code>/pc getir devre raporu</code>; çalınırsa <code>/pc kayıp</code>; ayrıntı: <code>/pc yardım</code>, ilk kez: <code>/pc bağla</code>)",

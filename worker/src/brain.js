@@ -31,7 +31,7 @@ const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
   "harcama_ekle", "harcamalar", "harcama_sil", "butce",
-  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus", "aklimda_ekle", "aklimda_liste", "aklimda_bitti", "ani_defteri",
+  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus", "tramvay", "aklimda_ekle", "aklimda_liste", "aklimda_bitti", "ani_defteri",
 ];
 
 // Jarvis kişiliği: yapay zekânın yazdığı cevaplar Iron Man'deki asistan gibi kibar ve hafif esprili olur.
@@ -150,6 +150,7 @@ Yapabildiğin işlemler:
 - {"ad":"kisilik","metin":"ac"} Jarvis'in konuşma tarzı: "kapat" (espri yapma, efendim deme, düz konuş), "ac" (yeniden Jarvis gibi konuş).
 - {"ad":"nobetci_eczane","metin":""} Kayseri'de bu gece açık olan nöbetçi eczaneler ("açık eczane var mı?", "nöbetçi eczane nerede?"). Belli bir ilçe sorulduysa metin ilçe adı (ör. "talas"), bütün ilçeler için "hepsi"; yoksa boş (şehir merkezi).
 - {"ad":"otobus","metin":""} Kayseri'de şehir içi otobüsün durağa kaç dakikada geleceği ("okul durağına otobüs ne zaman gelir?", "7548'e hangi otobüsler geliyor?", "otobüs kaç dakikada gelir?"). metin kayıtlı durağın adı (ör. "okul") ya da durak numarası; söylenmediyse boş. Yakındaki durak sorulduysa "yakin".
+- {"ad":"tramvay","metin":""} Kayseri'de tramvayın durağa kaç dakikada geleceği ("İldem'e tramvay ne zaman gelir?", "Cumhuriyet Meydanı tramvay"). metin durağın adı (ör. "Cumhuriyet Meydanı"); söylenmediyse boş.
 - {"ad":"telefonu_bul","metin":""} kullanıcının telefonunu (iPhone) birkaç dakika sesli bildirimle çaldırır ("telefonumu bulamıyorum", "telefonumu çaldır"). Durdurmak için metin "dur".
 
 Kurallar:
@@ -346,6 +347,10 @@ export function toSteps(actions, nowMs, message = "") {
       const stop = (a.metin ?? "").replace(/['’]\S*/g, "").replace(/[^\p{L}\d ]/gu, " ").split(/\s+/)
         .filter((w) => w && !/^(durak|durag)/.test(plain(w))).join(" ").slice(0, 30);
       steps.push({ type: "private", label: "otobüs", command: "otobus", args: stop });
+    } else if (a.ad === "tramvay") {
+      const stop = (a.metin ?? "").replace(/['’]\S*/g, "").replace(/[^\p{L}\d ]/gu, " ").split(/\s+/)
+        .filter((w) => w && !/^(durak|durag|tramvay)/.test(plain(w))).join(" ").slice(0, 40);
+      steps.push({ type: "private", label: "tramvay", command: "tramvay", args: stop });
     } else if (a.ad === "aklimda_ekle") {
       const text = (a.metin ?? "").replace(/\s+/g, " ").trim();
       if (text) steps.push({ type: "run", command: "aklimda", args: `ekle ${text}` });

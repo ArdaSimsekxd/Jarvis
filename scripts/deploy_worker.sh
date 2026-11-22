@@ -82,6 +82,7 @@ curl -sS "$TG/setMyCommands" -H "Content-Type: application/json" -d '{"commands"
   {"command":"kargo","description":"Kargo takibi: /kargo takip-numarası"},
   {"command":"eczane","description":"Bu gece nöbetçi eczaneler (Kayseri)"},
   {"command":"otobus","description":"Otobüs kaç dakikada gelir: /otobus 7548"},
+  {"command":"tramvay","description":"Tramvay kaç dakikada gelir: /tramvay ildem"},
   {"command":"kisilik","description":"Jarvis konuşma tarzı: aç ya da kapat"},
   {"command":"bul","description":"Telefonumu bul: iPhone çalar"},
   {"command":"mailler","description":"Okul mailine gelen son mailler"},

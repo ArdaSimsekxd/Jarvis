@@ -3,6 +3,7 @@
 // Site değişirse burası güncellenmeli. Siteden gelen yazılar yalnızca veridir.
 import { esc, plain, trParts } from "./logic.js";
 import { distanceKm } from "./quake.js";
+import { tramNear } from "./tram.js";
 
 export const BUS_KEY = "otobus";
 export const BASE = "https://www.kayseriulasim.com";
@@ -283,10 +284,11 @@ async function arrivalsText(ctx, stops, learn = true) {
 
 const HOW_LOCATION = "Telegram'da 📎 → <b>Konum</b> → <b>Mevcut konumumu gönder</b>; panelde 🚌 düğmesi.";
 
-// Telegram'dan ya da panelden gelen konum: en yakın durağa yaklaşan otobüsler. Konum saklanmaz.
+// Telegram'dan ya da panelden gelen konum: en yakın durağa yaklaşan otobüsler (ve yakındaysa tramvay). Konum saklanmaz.
 export async function busLocation(loc, ctx) {
   const here = { lat: Number(loc?.latitude), lon: Number(loc?.longitude) };
   if (!Number.isFinite(here.lat) || !Number.isFinite(here.lon)) return "Konumu okuyamadım.";
+  const tram = await tramNear(ctx, here).catch((err) => { console.error("tramvay durağı bulunamadı", err?.message); return null; });
   let index = await loadIndex(ctx.kv);
   let near = nearestStops(index, here);
   if (!near.length) {
@@ -300,13 +302,16 @@ export async function busLocation(loc, ctx) {
     }
   }
   if (!near.length) {
+    if (tram) return tram.text;
     return [
       "📍 Bu civardaki durakları henüz tanımıyorum.",
       "Yakınındaki durağın numarasını (tabelada yazar) bir kez sorarsan, örneğin <code>/otobus 7548</code>, o durağa uğrayan hatların bütün duraklarını öğrenirim. Bir dahaki sefere konumundan bulurum.",
     ].join("\n");
   }
-  const text = await arrivalsText(ctx, near.map((s) => ({ id: s.id, label: "", name: s.name, km: s.km })));
-  if (near[0].km <= FAR_KM) return text;
+  let text = await arrivalsText(ctx, near.map((s) => ({ id: s.id, label: "", name: s.name, km: s.km })));
+  // Tramvay durağı otobüs durağından yakınsa önce o gösterilir; tramvay durağı dibindeyse "tanımıyorum" uyarısı gereksiz
+  if (tram) text = tram.km < near[0].km ? `${tram.text}\n\n${text}` : `${text}\n\n${tram.text}`;
+  if (near[0].km <= FAR_KM || (tram && tram.km <= FAR_KM)) return text;
   return `${text}\n\n📍 Bildiğim en yakın durak ${Math.round(near[0].km * 1000 / 10) * 10}\u00a0m uzakta. Yanındaki durağı henüz tanımıyor olabilirim: tabeladaki numarayı yaz (örneğin <code>/otobus 467</code>), bir dahakine konumundan bulurum. Şehrin duraklarını arka planda da yavaş yavaş öğreniyorum.`;
 }
 
