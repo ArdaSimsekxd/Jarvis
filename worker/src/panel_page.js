@@ -121,6 +121,9 @@ button:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .msg.wait { color: var(--muted); font-style: italic; }
 .msg code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: var(--cyan); }
 .chatform { display: flex; gap: 8px; }
+.chatform input { min-width: 0; flex: 1 1 auto; }
+.sendico { display: none; }
+@media (max-width: 480px) { .chatform .mic { width: 46px; } .chatform button[type=submit] { flex: 0 0 auto; width: 52px; padding: 0; font-size: 20px; } .sendtxt { display: none; } .sendico { display: inline; } }
 .mic { flex: 0 0 auto; width: 52px; font-size: 22px; padding: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .mic.rec { background: rgba(255, 77, 109, .22); border-color: #ff4d6d; box-shadow: 0 0 18px rgba(255, 77, 109, .55); animation: pulse 1s ease-in-out infinite; }
 .mic:disabled { opacity: .5; }
@@ -197,8 +200,9 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         <div class="chatlog" id="chatlog" aria-live="polite"></div>
         <form class="chatform" id="chatForm" autocomplete="off">
           <input type="text" id="chatInput" placeholder="Jarvis'e yaz: yarın derslerim ne?" maxlength="1000" aria-label="Jarvis'e mesaj">
+          <button type="button" id="bus" class="mic" aria-label="Yakınımdaki otobüsler" title="Yakınımdaki durağa gelen otobüsler (konumunu bir kez kullanır)">🚌</button>
           <button type="button" id="mic" class="mic" aria-label="Basılı tut ve konuş" title="Basılı tut ve konuş (ya da dokun, konuş, yeniden dokun)">🎙</button>
-          <button type="submit">Gönder</button>
+          <button type="submit" aria-label="Gönder"><span class="sendtxt">Gönder</span><span class="sendico">➤</span></button>
         </form>
         <div class="toast" id="micState" aria-live="polite"></div>
       </section>
@@ -612,14 +616,9 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
   $("mic").addEventListener("pointercancel", function () { if (rec && !toggleMode) stopRec(false); });
   $("mic").addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
 
-  $("chatForm").addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    var input = $("chatInput"), text = input.value.trim();
-    if (!text) return;
-    input.value = "";
-    bubble("me", text); remember("me", text);
-    var waiting = bubble("bot", "Düşünüyorum…", "wait");
-    fetch("/panel/chat", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ text: text }) })
+  function ask(payload, waitText) {
+    var waiting = bubble("bot", waitText || "Düşünüyorum…", "wait");
+    return fetch("/panel/chat", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (r.status === 401) throw new Error("yetki"); return r.json(); })
       .then(function (r) {
         waiting.remove();
@@ -630,6 +629,30 @@ footer { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing:
         if (err.message === "yetki") return gate("Giriş süren dolmuş. Telegram'da /panel yazıp gelen kodu gir.");
         bubble("bot", "Jarvis'e ulaşılamadı, biraz sonra yeniden dener misin?");
       });
+  }
+  $("chatForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var input = $("chatInput"), text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    bubble("me", text); remember("me", text);
+    ask({ text: text });
+  });
+  // 🚌: o anki konumla en yakın durağa gelen otobüsler. Konum yalnızca bu soru için gönderilir.
+  $("bus").addEventListener("click", function () {
+    if (!navigator.geolocation) { micState("Bu tarayıcı konumu desteklemiyor."); return; }
+    $("bus").disabled = true;
+    micState("Konumunu alıyorum…");
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      micState(""); $("bus").disabled = false;
+      bubble("me", "🚌 Yakınımdaki otobüsler"); remember("me", "🚌 Yakınımdaki otobüsler");
+      ask({ location: { lat: pos.coords.latitude, lon: pos.coords.longitude } }, "En yakın durağa bakıyorum…");
+    }, function (err) {
+      $("bus").disabled = false;
+      micState(err && err.code === 1
+        ? "Konum izni yok. iPhone'da Ayarlar > Gizlilik > Konum Servisleri > Safari Web Siteleri'nden izin ver, sonra yeniden dene."
+        : "Konumunu alamadım. Biraz sonra yeniden dener misin?");
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
   });
 
   // Canlı bağlantı: yeni bir şey olunca Jarvis haber verir, ekran hemen yenilenir.

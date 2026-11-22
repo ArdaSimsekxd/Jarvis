@@ -135,7 +135,7 @@ test("uygulama dosyaları, kodla giriş ve sohbet", async () => {
     kv: fakeKv({ [PANEL_KEY]: "anahtar" }),
     pc: { call: async (op, body) => { calls.push([op, body]); return op === "lcheck" ? { ok: body.code === "ABCD-EFGH" } : op === "lcode" ? { code: "WXYZ-2345" } : { ok: true }; } },
   };
-  const src = { chat: async (text) => [`Cevap: <b>${text}</b>`] };
+  const src = { chat: async (text, loc) => [loc ? `Konum: ${loc.latitude},${loc.longitude}` : `Cevap: <b>${text}</b>`] };
 
   const manifest = await (await handlePanel(req("/panel/manifest.webmanifest"), ctx, src)).json();
   assert.equal(manifest.display, "standalone");
@@ -152,6 +152,9 @@ test("uygulama dosyaları, kodla giriş ve sohbet", async () => {
 
   assert.equal((await handlePanel(req("/panel/chat", { method: "POST", body: { text: "selam" } }), ctx, src)).status, 401);
   assert.deepEqual(await (await handlePanel(req("/panel/chat", { method: "POST", key: "anahtar", body: { text: "selam" } }), ctx, src)).json(), { replies: ["Cevap: <b>selam</b>"] });
+  // 🚌 düğmesi: konum yalnızca o soru için gider; bozuk konum yok sayılır
+  assert.deepEqual(await (await handlePanel(req("/panel/chat", { method: "POST", key: "anahtar", body: { location: { lat: 38.74, lon: 35.47 } } }), ctx, src)).json(), { replies: ["Konum: 38.74,35.47"] });
+  assert.deepEqual(await (await handlePanel(req("/panel/chat", { method: "POST", key: "anahtar", body: { location: { lat: "x", lon: 999 } } }), ctx, src)).json(), { replies: [] });
 
   assert.equal((await handlePanel(req("/panel/push", { method: "POST", body: {} }), ctx, src)).status, 401);
   await handlePanel(req("/panel/push", { method: "POST", key: "anahtar", body: { sub: { endpoint: "https://web.push.apple.com/x" } } }), ctx, src);

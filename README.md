@@ -118,6 +118,7 @@ Jarvis'in bildiği her şeyi tek ekranda gösteren, Iron Man tarzı bir sayfa:
 - **Kargo takibi:** `/kargo 123456789012 kulaklık` kargoyu kaydeder (sondaki ad isteğe bağlı) ve takip sayfasının bağlantısını verir. Firmayı da yazabilirsin: `/kargo aras 123456789012`. Yurtiçi, Aras ve PTT'de firmanın kendi sayfası açılır, diğerlerinde firmayı kendisi bulan 17TRACK sayfası. Jarvis her sabah 10:00'da bekleyen kargoları bağlantılarıyla hatırlatır. `/kargo` hepsini gösterir; gelince `/kargo geldi 1` yaz. Kayıtlar 30 gün sonra kendiliğinden düşer.
   - **İsteğe bağlı otomatik takip:** 17TRACK API anahtarın olursa (`TRACK17_KEY` secret'ı) Jarvis durumu yarım saatte bir kendisi okur. Kargo yola çıkınca, dağıtıma çıkınca ve teslim edilince haber verir.
 - **Nöbetçi eczane:** `/eczane` (ya da "açık eczane var mı?") Kayseri merkezde (Melikgazi, Kocasinan, Talas) o gece nöbetçi olan eczaneleri adres, telefon ve harita bağlantısıyla verir. `/eczane talas` tek ilçeyi, `/eczane hepsi` bütün ilçeleri gösterir. Liste haber sitelerinin herkese açık nöbetçi eczane sayfalarından okunur (Posta, olmazsa Sabah, Habertürk, Gazete Vatan). Sabah 09:00'a kadar dün akşam başlayan nöbet listesi gösterilir. Bulunan liste o geceye ait değilse uyarı yazılır. Gitmeden önce aramak iyi olur. Kurulum gerekmez.
+- **Otobüs (Kayseri):** `/otobus 7548` bir durağa yaklaşan otobüsleri ve kaç dakikada geleceklerini gösterir (durak numarası tabelada ve kayseriulasim.com'da yazar). `/otobus ekle 7548 okul` durağı adıyla kaydeder, sonra `/otobus okul` ya da "okul durağına otobüs ne zaman gelir?" yeter. `/otobus ara erkilet` durak arar. **Konumuna göre:** Telegram'da 📎 → Konum → Mevcut konumumu gönder, ya da panelde 🚌 düğmesi: en yakın durağa gelen otobüsler gelir. Konum saklanmaz. Durakların yeri hat hat öğrenilir: bir durağı numarasıyla sorunca oraya uğrayan hatların bütün durakları öğrenilir (iki haftada bir yenilenir). Tanınmayan bir yerdeysen bir kez yakındaki durağın numarasını sor. Veri Kayseri Ulaşım'ın sitesinin kullandığı adreslerden gelir; resmi bir API değildir, site değişirse `worker/src/bus.js` güncellenmeli. Kurulum gerekmez.
 - **Telefonumu bul:** `/bul` (ya da "telefonumu bulamıyorum") yazınca iPhone'daki Jarvis uygulamasına 3 dakika boyunca 20 saniyede bir bildirim gider. Bulunca bildirime dokun, durur (`/bul dur` da olur). Bilgisayardan da çalışır: Telegram Desktop'tan yaz ya da paneli bilgisayarda açıp "📱 Telefonumu bul"a bas. Uygulamada bildirimlerin açık olması gerekir. Telefon sessizdeyse yalnızca titrer; sessizdeyken de ses çıkarması için [iCloud Bul](https://www.icloud.com/find) sayfasındaki "Ses Çal" kullanılmalı.
 
 ## Komutlar
@@ -149,6 +150,7 @@ Telegram'da Jarvis botuna yazılır:
 | `/deprem` | Son depremler ve uyarı ayarları; `/deprem ekle İzmir`, `/deprem esik 4`, `/deprem kapat` |
 | `/kargo 123456789012 kulaklık` | Kargoyu kaydeder, takip bağlantısını verir, her sabah hatırlatır; `/kargo` hepsi, `/kargo geldi 1` |
 | `/eczane` | Kayseri'de bu gece nöbetçi eczaneler; `/eczane talas`, `/eczane hepsi` |
+| `/otobus 7548` | Durağa yaklaşan otobüsler ve kaç dakika; `/otobus ekle 7548 okul`, `/otobus okul`, `/otobus ara erkilet`; konum gönderince en yakın durak |
 | `/bul` | Telefonumu bul: iPhone'daki Jarvis uygulaması 3 dakika bildirimle çalar; `/bul dur` |
 | `/kisilik` | Jarvis'in "efendim" diyen, ara sıra espri yapan konuşma tarzı (varsayılan açık); `/kisilik kapat` ile düz cevaplar |
 | `/pc kilitle` | Bilgisayarı yönetir: `/pc`, `/pc ekran`, `/pc kamera`, `/pc konum`, `/pc getir devre raporu`, `/pc ses 30`, `/pc aç spotify`, `/pc dosyalar`; çalınırsa `/pc kayıp`, bulununca `/pc bulundu`; ilk kez `/pc bağla` |
@@ -282,6 +284,7 @@ worker/src/web.js             İnternette arama ve sayfa özeti (Tavily)
 worker/src/pc.js              Bilgisayar bağlantısı (Durable Object, WebSocket)
 worker/src/quake.js           Deprem uyarısı (AFAD, yedekte EMSC ve USGS)
 worker/src/pharmacy.js        Nöbetçi eczaneler (haber sitelerinin listeleri)
+worker/src/bus.js             Otobüs geliş süreleri ve en yakın durak (kayseriulasim.com)
 worker/src/cargo.js           Kargo takibi (bağlantı + hatırlatma; anahtar varsa 17TRACK)
 worker/src/panel.js           Jarvis paneli ve iPhone uygulaması: veriler, giriş, sohbet; sayfası panel_page.js
 worker/src/webpush.js         Uygulama bildirimleri (Web Push, VAPID)

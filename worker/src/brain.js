@@ -31,7 +31,7 @@ const ACTIONS = [
   "yemek", "dersler", "odevler", "notlar", "mailler", "hatirlatma_ekle", "hatirlatmalar", "hatirlatma_sil",
   "fitness_ekle", "fitness_liste", "fitness_iptal", "fitness_istek_sil", "hafiza_kaydet", "hafiza_ara", "hafiza_sil", "tarihler",
   "harcama_ekle", "harcamalar", "harcama_sil", "butce",
-  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik",
+  "internet_ara", "sayfa_ozetle", "bilgisayar", "deprem", "kargo", "telefonu_bul", "nobetci_eczane", "kisilik", "otobus",
 ];
 
 // Jarvis kişiliği: yapay zekânın yazdığı cevaplar Iron Man'deki asistan gibi kibar ve hafif esprili olur.
@@ -138,13 +138,14 @@ Yapabildiğin işlemler:
 - {"ad":"harcamalar","ay":"YYYY-AA","kategori":""} harcamalar ve bütçe durumu. ay yalnızca bu ay değilse, kategori yalnızca tek bir tür soruluyorsa. "Bu ay yemeğe ne kadar harcadım?", "bütçem ne durumda?" gibi belirli sorularda yorum "evet".
 - {"ad":"harcama_sil","metin":"harcamada geçen kelime ya da tutar"} bir harcamayı siler ("son harcamayı sil" için metin "son")
 - {"ad":"butce","tutar":"6000"} aylık harcama bütçesini ayarlar
-- {"ad":"internet_ara","metin":"arama motoruna yazılacak kısa sorgu"} internette arar ve kaynaklı cevap verir. Güncel ya da değişebilen her şey için kullan: haberler, fiyatlar, otobüs/uçak/tren saatleri, hava durumu, maç sonuçları, bir yerin açılış saatleri, yeni çıkan ürünler, bilmediğin ya da emin olmadığın olgular. metin'e soruyu arama motoruna yazılacak biçimde, gerekirse tarih ve şehir ekleyerek yaz (ör. "Kayseri Ankara otobüs seferleri 23 Kasım 2026").
+- {"ad":"internet_ara","metin":"arama motoruna yazılacak kısa sorgu"} internette arar ve kaynaklı cevap verir. Güncel ya da değişebilen her şey için kullan: haberler, fiyatlar, şehirlerarası otobüs/uçak/tren saatleri, hava durumu, maç sonuçları, bir yerin açılış saatleri, yeni çıkan ürünler, bilmediğin ya da emin olmadığın olgular. metin'e soruyu arama motoruna yazılacak biçimde, gerekirse tarih ve şehir ekleyerek yaz (ör. "Kayseri Ankara otobüs seferleri 23 Kasım 2026").
 - {"ad":"sayfa_ozetle","metin":"bağlantı ve varsa isteği"} verilen bağlantıdaki sayfayı okuyup özetler ("şunu özetle https://...", "bu ilanda son başvuru ne zaman? https://...")
 - {"ad":"bilgisayar","metin":"iş"} kullanıcının Windows bilgisayarında bir iş yapar. metin tam olarak şunlardan biri: "durum" (açık mı, pil), "kilitle", "uyku", "kapat", "yeniden" (yeniden başlat), "iptal" (bekleyen kapatmayı durdurur), "ekran" (ekran görüntüsü gönderir), "kamera" (bilgisayarın kamerasından fotoğraf), "konum" (bilgisayar nerede), "kayip" (bilgisayar kayboldu ya da çalındı: kayıp modunu açar), "bulundu" (kayıp modunu kapatır), "ses 40" (0-100 arası), "ses ac", "ses kis", "ses kapat", "muzik oynat" (durdur ya da devam), "muzik sonraki", "muzik onceki", "ac spotify" (ac'tan sonra uygulamanın, sitenin adı ya da bağlantı), "dosyalar" (İndirilenler ve Masaüstündeki son dosyalar), "dosya 3" (listedeki 3. dosyayı gönderir), "getir devre raporu" (getir'den sonra dosyanın adı ya da adına yakın sözcükler: bilgisayarın her yerinde arar, bulduğunu panele gönderir), "getir 2" (son aramada çıkan 2. dosya), "bagla" (bilgisayarı ilk kez bağlamak için). Bir isteğin birden çok adımı varsa her biri için ayrı yaz.
 - {"ad":"deprem","metin":""} son depremler ve deprem uyarısı ayarları ("deprem mi oldu?", "az önce sallandı mı?"). Ayar için metin: "ekle İzmir" (bir şehri de takip et), "sil İzmir", "esik 4" (yakındaki depremler için en küçük büyüklük), "kapat", "ac".
 - {"ad":"kargo","metin":""} kargoları ve son durumlarını gösterir ("kargom nerede?"). Yeni kargo eklemek için metin takip numarası, varsa firma (yurtici, aras, ptt, trendyol, hepsijet) ve kısa bir ad: "yurtici 123456789012 kulaklık". Silmek için "sil 2".
 - {"ad":"kisilik","metin":"ac"} Jarvis'in konuşma tarzı: "kapat" (espri yapma, efendim deme, düz konuş), "ac" (yeniden Jarvis gibi konuş).
 - {"ad":"nobetci_eczane","metin":""} Kayseri'de bu gece açık olan nöbetçi eczaneler ("açık eczane var mı?", "nöbetçi eczane nerede?"). Belli bir ilçe sorulduysa metin ilçe adı (ör. "talas"), bütün ilçeler için "hepsi"; yoksa boş (şehir merkezi).
+- {"ad":"otobus","metin":""} Kayseri'de şehir içi otobüsün durağa kaç dakikada geleceği ("okul durağına otobüs ne zaman gelir?", "7548'e hangi otobüsler geliyor?", "otobüs kaç dakikada gelir?"). metin kayıtlı durağın adı (ör. "okul") ya da durak numarası; söylenmediyse boş. Yakındaki durak sorulduysa "yakin".
 - {"ad":"telefonu_bul","metin":""} kullanıcının telefonunu (iPhone) birkaç dakika sesli bildirimle çaldırır ("telefonumu bulamıyorum", "telefonumu çaldır"). Durdurmak için metin "dur".
 
 Kurallar:
@@ -337,6 +338,10 @@ export function toSteps(actions, nowMs, message = "") {
       else steps.push({ type: "private", label: "kargo", command: "kargo", args });
     } else if (a.ad === "nobetci_eczane") {
       steps.push({ type: "private", label: "eczane", command: "eczane", args: (a.metin ?? "").trim().split(/\s+/)[0].replace(/['’].*$/, "").replace(/[^\p{L}]/gu, "") });
+    } else if (a.ad === "otobus") {
+      const stop = (a.metin ?? "").replace(/['’]\S*/g, "").replace(/[^\p{L}\d ]/gu, " ").split(/\s+/)
+        .filter((w) => w && !/^(durak|durag)/.test(plain(w))).join(" ").slice(0, 30);
+      steps.push({ type: "private", label: "otobüs", command: "otobus", args: stop });
     } else if (a.ad === "kisilik") {
       steps.push({ type: "run", command: "kisilik", args: /kapa|dur|normal|d[uü]z/i.test(a.metin ?? "") ? "kapat" : "ac" });
     } else if (a.ad === "telefonu_bul") {

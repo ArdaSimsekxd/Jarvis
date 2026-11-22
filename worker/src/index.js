@@ -13,6 +13,7 @@ import { cmdBul, cmdPanel, handlePanel, plainText } from "./panel.js";
 import { checkQuakes, cmdDeprem } from "./quake.js";
 import { checkCargo, cmdKargo } from "./cargo.js";
 import { cmdEczane } from "./pharmacy.js";
+import { busLocation, cmdOtobus } from "./bus.js";
 
 export { PcHub } from "./pc.js";   // Durable Object: bilgisayar bağlantısı
 import { cmdButce, cmdHarcama, cmdHarcamalar, monthlyReport, recordReceipt } from "./expenses.js";
@@ -348,6 +349,7 @@ async function runCommand(cmd, ctx) {
   if (["kargo", "kargolar", "kargom"].includes(cmd.command)) return cmdKargo(cmd.args, ctx);
   if (["bul", "telefon", "telefonumubul"].includes(cmd.command)) return cmdBul(cmd.args, ctx);
   if (["eczane", "nobetci", "nobetcieczane"].includes(cmd.command)) return cmdEczane(cmd.args, ctx);
+  if (["otobus", "otobüs", "durak", "otobusler"].includes(cmd.command)) return cmdOtobus(cmd.args, ctx);
   if (["kisilik", "kişilik", "jarvis"].includes(cmd.command)) return cmdKisilik(cmd.args, ctx);
   if (["start", "yardim", "help"].includes(cmd.command)) return HELP;
   return "Bu komutu bilmiyorum. Komutlar için /yardim yaz.";
@@ -420,6 +422,8 @@ async function handlePhoto(message, ctx) {
 export async function handleMessage(message, ctx) {
   if (String(message?.chat?.id) !== String(ctx.chatId)) return; // sadece sahibine cevap ver
   if (message.photo?.length) return void await handlePhoto(message, ctx);
+  // Konum: en yakın kayıtlı durağa yaklaşan otobüsler (ya da beklenen durağın yeri)
+  if (message.location) return void await deliver(ctx, [await busLocation(message.location, ctx)]);
   if (message.document && !message.text) {
     const image = /^image\//.test(message.document.mime_type ?? "");
     return void await ctx.send(image
@@ -494,7 +498,7 @@ export async function pushToApp(env, said) {
 }
 
 // Uygulamanın içinden yazılan mesaj: Telegram'daki gibi işlenir, cevaplar uygulamaya döner.
-async function appChat(env, c, text, ctx) {
+async function appChat(env, c, text, ctx, location = null) {
   const out = [];
   const chatCtx = {
     ...c,
@@ -502,7 +506,7 @@ async function appChat(env, c, text, ctx) {
     sendPhoto: async (photo, caption = "") => { out.push(caption ? `${caption}\n<i>(fotoğraf Telegram'a gönderildi)</i>` : "<i>📸 Fotoğrafı Telegram'a gönderdim.</i>"); return c.sendPhoto(photo, caption); },
     typing: async () => {},
   };
-  await handleMessage({ chat: { id: c.chatId }, text }, chatCtx);
+  await handleMessage(location ? { chat: { id: c.chatId }, location } : { chat: { id: c.chatId }, text }, chatCtx);
   ctx?.waitUntil?.(notifyApp(env));
   return out;
 }
@@ -612,7 +616,7 @@ export default {
         reminders: () => listReminders(env.KV),
         names: () => courseNames(c),
         menu: () => c.fetchMenu(),
-        chat: (text) => appChat(env, c, text, ctx),
+        chat: (text, location) => appChat(env, c, text, ctx, location),
         voice: env.AI ? (bytes) => appVoice(env, c, bytes, ctx) : null,
       };
       return (await handlePanel(request, c, src)) ?? new Response("yok", { status: 404 });
