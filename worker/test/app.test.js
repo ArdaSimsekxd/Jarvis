@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { b64url, encryptPayload, fromB64url, makeVapidKeys, trustedEndpoint, vapidHeader } from "../src/webpush.js";
 import { PcHub } from "../src/pc.js";
-import { PANEL_KEY, SERVICE_WORKER, cmdPanel, handlePanel, plainText } from "../src/panel.js";
+import { PANEL_KEY, SERVICE_WORKER, cmdPanel, handlePanel, plainText, reminderItems } from "../src/panel.js";
 import { pushToApp } from "../src/index.js";
 
 const enc = new TextEncoder();
@@ -177,4 +177,33 @@ test("Jarvis'in kendiliğinden gönderdiği mesajlar bildirime çevrilir", async
   ]);
   assert.equal(ops.at(-1)[0], "/internal/notify");
   await pushToApp({}, ["x"]);
+});
+
+test("panel: ortak sohbet geçmişi ve hatırlatma silme", async () => {
+  const ctx = { kv: fakeKv({ [PANEL_KEY]: "anahtar" }) };
+  const dropped = [];
+  let log = [{ w: "me", t: "selam" }, { w: "bot", t: "Merhaba" }];
+  const src = {
+    chat: async () => [],
+    chatLog: async () => log,
+    chatClear: async () => { log = []; },
+    dropReminder: async (k) => { if (!/^rem:\d{15}:\w+$/.test(k)) return false; dropped.push(k); return true; },
+  };
+  assert.equal((await handlePanel(req("/panel/chat"), ctx, src)).status, 401);
+  assert.deepEqual(await (await handlePanel(req("/panel/chat", { key: "anahtar" }), ctx, src)).json(), { log: [{ w: "me", t: "selam" }, { w: "bot", t: "Merhaba" }] });
+  assert.deepEqual(await (await handlePanel(req("/panel/chat", { method: "DELETE", key: "anahtar" }), ctx, src)).json(), { log: [] });
+  assert.deepEqual(await (await handlePanel(req("/panel/chat", { key: "anahtar" }), ctx, { chat: src.chat })).json(), { log: null }, "depo yoksa eski davranış");
+
+  assert.equal((await handlePanel(req("/panel/reminder", { method: "DELETE", body: { key: "rem:000001700000000:ab" } }), ctx, src)).status, 401);
+  assert.equal((await handlePanel(req("/panel/reminder", { method: "DELETE", key: "anahtar", body: { key: "rem:000001700000000:ab" } }), ctx, src)).status, 200);
+  assert.equal((await handlePanel(req("/panel/reminder", { method: "DELETE", key: "anahtar", body: { key: "panel:key" } }), ctx, src)).status, 400);
+  assert.deepEqual(dropped, ["rem:000001700000000:ab"]);
+
+  const now = 1_800_000_000_000;
+  const items = reminderItems([
+    { key: "rem:b", at: now + 7200e3, text: "Staj başvurusu", ev: "n1" },
+    { key: "rem:a", at: now + 3600e3, text: "Hocaya mail at", ev: null },
+    { key: "rem:old", at: now - 3600e3, text: "geçmiş" },
+  ], now);
+  assert.deepEqual(items.map((r) => [r.key, r.auto]), [["rem:a", false], ["rem:b", true]]);
 });

@@ -382,3 +382,17 @@ test("panel dosya bağlantısını Durable Object'e yönlendirir", async () => {
   assert.equal(await r.text(), "dosya");
   assert.deepEqual(seen, ["/panel/file/abc"]);
 });
+
+test("panel sohbetinin ortak geçmişi saklanır, sınırlıdır ve silinir", async () => {
+  const hub = new PcHub(fakeState(), {});
+  assert.deepEqual(await internal(hub, "chatget"), { log: [] });
+  await internal(hub, "chatadd", { items: [{ w: "me", t: "selam" }, { w: "bot", t: "Merhaba efendim" }, { w: "kotu", t: "x" }, { w: "bot", t: "" }] });
+  const { log } = await internal(hub, "chatget");
+  assert.deepEqual(log.map((x) => [x.w, x.t]), [["me", "selam"], ["bot", "Merhaba efendim"]]);
+  for (let i = 0; i < 40; i += 1) await internal(hub, "chatadd", { items: [{ w: "me", t: `m${i}` }, { w: "bot", t: "y".repeat(5000) }] });
+  const big = (await internal(hub, "chatget")).log;
+  assert.equal(big.length, 60);
+  assert.equal(big.at(-1).t.length, 4000);
+  await internal(hub, "chatclear");
+  assert.deepEqual(await internal(hub, "chatget"), { log: [] });
+});
