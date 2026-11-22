@@ -4,7 +4,7 @@ import { busLocation } from "../src/bus.js";
 import { toSteps } from "../src/brain.js";
 import { trToMs } from "../src/logic.js";
 import {
-  TRAM_KEY, cmdTramvay, crawlTram, findTramStops, formatTram, loadTramIndex, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
+  ARRIVAL_VARIANTS, TRAM_KEY, fetchTramArrivals, cmdTramvay, crawlTram, findTramStops, formatTram, loadTramIndex, nearestTram, parseTramArrivals, parseTramStops, tramArrivalsUrl,
 } from "../src/tram.js";
 
 const NOW = trToMs(2026, 11, 22, 20, 55);
@@ -126,4 +126,22 @@ test("tramvay: panel düğmeleri ayrı (🚌 yalnız otobüs, 🚋 yalnız tramv
   const b = await busLocation(near, busOnly, { only: "bus" });
   assert.doesNotMatch(b, /🚋/);
   assert.equal(busOnly.calls.some((c) => c.url.includes("lineId=T")), false, "tramvaya bakılmaz");
+});
+
+test("tramvay: varış isteği çerezle gider; çalışmayan biçimde sıradaki denenir ve hatırlanır", async () => {
+  const ctx = fakeCtx();
+  const plain = ctx.webFetch;
+  ctx.webFetch = async (url, init = {}) => (url.startsWith(ARR) && init.body === undefined && init.method === "POST"
+    ? (ctx.calls.push({ url, init }), { ok: false, status: 500, json: async () => { throw new Error("html"); }, text: async () => "<html>" })
+    : plain(url, init));
+  const list = await fetchTramArrivals(ctx, ILDEM1);
+  assert.equal(list[0].code, "T1");
+  const tries = ctx.calls.filter((c) => c.url === ARR + ILDEM1);
+  assert.equal(tries.length, 2);
+  assert.equal(tries[0].init.headers.Cookie, "dil=tr; HatTuru=2");
+  assert.equal(tries[1].init.body, "{}");
+  assert.equal(await ctx.cache.get("tramvay:bicim"), 1);
+  await fetchTramArrivals(ctx, ILDEM5);
+  assert.equal(ctx.calls.filter((c) => c.url === ARR + ILDEM5).length, 1, "çalışan biçim doğrudan kullanılır");
+  assert.equal(ARRIVAL_VARIANTS.length, 4);
 });
